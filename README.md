@@ -144,6 +144,24 @@ autokaggle run https://www.kaggle.com/competitions/{competition}
 ls runs/{run_id}/output
 ```
 
+## Running & testing (by phase)
+
+### Phase 1 (CLI skeleton + run store)
+
+Run the CLI from the repo root:
+
+```
+python -m autokaggle run https://www.kaggle.com/competitions/{competition}
+python -m autokaggle status {run_id}
+python -m autokaggle logs {run_id}
+```
+
+Run tests from the repo root:
+
+```
+pytest -q
+```
+
 ## Testing (planned)
 
 > This section will be finalized once the CLI is implemented.
