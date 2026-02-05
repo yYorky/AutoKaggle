@@ -20,12 +20,31 @@ def _handle_run(args: argparse.Namespace) -> int:
 
 def _handle_status(args: argparse.Namespace) -> int:
     store = RunStore(default_run_root())
-    metadata = store.load_metadata(args.run_id)
+    run_path = store.root / args.run_id
+    try:
+        metadata = store.load_metadata(args.run_id)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Unable to load run metadata for '{args.run_id}': {exc}")
+        return 1
+
     print("Run status")
     print(f"  Run ID: {metadata.run_id}")
     print(f"  Competition URL: {metadata.competition_url}")
     print(f"  Created At: {metadata.created_at}")
     print(f"  Status: {metadata.status}")
+    print(f"  Run Path: {run_path}")
+    print("  Artifacts:")
+    for artifact in (
+        "run.json",
+        "logs/run.log",
+        "input",
+        "code",
+        "env",
+        "output",
+    ):
+        artifact_path = run_path / artifact
+        marker = "found" if artifact_path.exists() else "missing"
+        print(f"    - {artifact}: {marker}")
     return 0
 
 
@@ -34,8 +53,15 @@ def _handle_logs(args: argparse.Namespace) -> int:
     if not log_path.exists():
         print(f"No logs found for run {args.run_id}.")
         return 1
-    print(log_path.read_text())
+    print(_tail_file(log_path))
     return 0
+
+
+def _tail_file(path: Path, lines: int = 50) -> str:
+    content = path.read_text().splitlines()
+    if len(content) <= lines:
+        return "\n".join(content)
+    return "\n".join(content[-lines:])
 
 
 def build_parser() -> argparse.ArgumentParser:

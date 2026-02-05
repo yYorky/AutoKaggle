@@ -59,6 +59,8 @@ class RunStore:
 
     def load_metadata(self, run_id: str) -> RunMetadata:
         metadata_path = self.root / run_id / "run.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"Run metadata not found at {metadata_path}")
         data = json.loads(metadata_path.read_text())
         validate_run_metadata(data)
         return RunMetadata(**data)
