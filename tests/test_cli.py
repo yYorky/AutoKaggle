@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_cli_run_creates_folder(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
+    env["AUTOKAGGLE_SKIP_DOWNLOAD"] = "1"
     cmd = [sys.executable, "-m", "autokaggle", "run", "https://www.kaggle.com/competitions/test"]
     result = subprocess.run(cmd, cwd=tmp_path, check=False, capture_output=True, text=True, env=env)
 
