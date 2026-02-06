@@ -146,6 +146,11 @@ ls runs/{run_id}/output
 
 ## Running & testing (by phase)
 
+### Requirements
+
+- Python 3.10+
+- Install dependencies with `pip install -r requirements.txt`.
+
 ### Phase 1 (CLI skeleton + run store)
 
 Run the CLI from the repo root:
