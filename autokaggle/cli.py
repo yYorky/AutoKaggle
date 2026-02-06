@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
+from autokaggle.kaggle_client import KaggleClient
 from autokaggle.run_store import RunStore, default_run_root
 
 
@@ -14,6 +16,11 @@ def _handle_run(args: argparse.Namespace) -> int:
     run_root.mkdir(parents=True, exist_ok=True)
     store = RunStore(run_root)
     run_path = store.create_run(args.competition_url)
+    if not os.getenv("AUTOKAGGLE_SKIP_DOWNLOAD"):
+        client = KaggleClient()
+        client.download_competition_data(args.competition_url, run_path / "input")
+        client.ensure_sample_submission(args.competition_url, run_path / "input")
+        store.update_status(run_path.name, "data_downloaded")
     print(f"Run created: {run_path}")
     return 0
 

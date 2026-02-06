@@ -65,6 +65,19 @@ class RunStore:
         validate_run_metadata(data)
         return RunMetadata(**data)
 
+    def update_status(self, run_id: str, status: str) -> RunMetadata:
+        metadata = self.load_metadata(run_id)
+        updated = RunMetadata(
+            run_id=metadata.run_id,
+            competition_url=metadata.competition_url,
+            created_at=metadata.created_at,
+            status=status,
+        )
+        metadata_path = self.root / run_id / "run.json"
+        self._write_metadata(metadata_path, updated)
+        self._append_log(self.root / run_id / "logs" / "run.log", f"Status: {status}.")
+        return updated
+
     def _write_metadata(self, path: Path, metadata: RunMetadata) -> None:
         payload = metadata.to_dict()
         validate_run_metadata(payload)
@@ -80,6 +93,10 @@ class RunStore:
             )
             + "\n"
         )
+
+    def _append_log(self, path: Path, message: str) -> None:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        path.write_text(path.read_text() + f"[{timestamp}] {message}\n")
 
     @staticmethod
     def _generate_run_id() -> str:
