@@ -26,10 +26,16 @@ def parse_competition_slug(competition_url: str) -> str:
     raise ValueError(f"Unable to parse competition slug from URL: {competition_url}")
 
 
+def _has_env_vars(*names: str) -> bool:
+    return all(os.getenv(name) for name in names)
+
+
 def _ensure_credentials() -> None:
-    if not os.getenv("KAGGLE_USERNAME") or not os.getenv("KAGGLE_KEY"):
+    legacy = _has_env_vars("KAGGLE_USERNAME", "KAGGLE_KEY")
+    tokens = _has_env_vars("KAGGLE_API_TOKEN", "KAGGLE_API_TOKEN_SECRET")
+    if not (legacy or tokens):
         raise KaggleCredentialsError(
-            "KAGGLE_USERNAME and KAGGLE_KEY must be set to download competition data."
+            "Set KAGGLE_USERNAME/KAGGLE_KEY or KAGGLE_API_TOKEN/KAGGLE_API_TOKEN_SECRET to download competition data."
         )
 
 
