@@ -31,7 +31,7 @@ def run_pipeline(run_path: Path, requirements_path: Path) -> ExecutionResult:
     _install_requirements(pip_path, requirements_path, log_path)
 
     code_dir = run_path / "code"
-    steps = ["validate.py", "predict.py"]
+    steps = ["train.py", "validate.py", "predict.py"]
     for script in steps:
         _run_script(python_path, code_dir, script, log_path)
 
@@ -98,4 +98,7 @@ def _venv_bin(venv_dir: Path, executable: str) -> Path:
 
 def _log(log_path: Path, message: str) -> None:
     timestamp = datetime.now(timezone.utc).isoformat()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    if not log_path.exists():
+        log_path.write_text("")
     log_path.write_text(log_path.read_text() + f"[{timestamp}] {message}\n")
