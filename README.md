@@ -96,6 +96,13 @@ runs/
 - Presents competition context to the user and LLM.
 - Stores decisions (features, model family, constraints) for prompt building.
 
+## Functional requirements (excerpt)
+
+### 5.4 Chat-guided strategy step
+- Provide the LLM with competition context + data profile.
+- Include the competition URL page text so the LLM can confirm rules and evaluation metric.
+- Persist transcript and decisions for downstream code generation.
+
 ### 4) LLM pipeline generator
 - Calls Gemini (or other provider) with a structured prompt.
 - Generates code for:
@@ -214,7 +221,8 @@ pytest -q tests/test_data_profiler.py
 
 Phase 4 builds a prompt from competition metadata + the data profile, sends it to
 Gemini 3 Flash, and stores a `chat_transcript.md` and `chat_decisions.json` in the
-run `input/` directory. Ensure your Google API key is available:
+run `input/` directory. The prompt includes an excerpt from the competition URL page
+so the LLM can confirm rules and evaluation metric. Ensure your Google API key is available:
 
 ```
 GOOGLE_API_KEY=your_google_api_key
