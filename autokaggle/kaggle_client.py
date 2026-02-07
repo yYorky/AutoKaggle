@@ -33,10 +33,16 @@ def _has_env_vars(*names: str) -> bool:
 def _ensure_credentials() -> None:
     legacy = _has_env_vars("KAGGLE_USERNAME", "KAGGLE_KEY")
     tokens = _has_env_vars("KAGGLE_API_TOKEN", "KAGGLE_API_TOKEN_SECRET")
-    if not (legacy or tokens):
+    if legacy or tokens:
+        return
+    if os.getenv("KAGGLE_API_TOKEN"):
         raise KaggleCredentialsError(
-            "Set KAGGLE_USERNAME/KAGGLE_KEY or KAGGLE_API_TOKEN/KAGGLE_API_TOKEN_SECRET to download competition data."
+            "KAGGLE_API_TOKEN is set but KAGGLE_API_TOKEN_SECRET is missing. "
+            "Set both variables to download competition data."
         )
+    raise KaggleCredentialsError(
+        "Set KAGGLE_USERNAME/KAGGLE_KEY or KAGGLE_API_TOKEN/KAGGLE_API_TOKEN_SECRET to download competition data."
+    )
 
 
 class KaggleClient:
@@ -55,7 +61,17 @@ class KaggleClient:
         competition = parse_competition_slug(competition_url)
         dest_dir.mkdir(parents=True, exist_ok=True)
 
-        self.api.competition_download_files(competition, path=dest_dir, quiet=True)
+        try:
+            self.api.competition_download_files(competition, path=dest_dir, quiet=True)
+        except Exception as exc:  # noqa: BLE001 - kaggle client raises requests.HTTPError
+            message = str(exc)
+            if "401" in message or "403" in message:
+                raise KaggleCredentialsError(
+                    "Kaggle API request was unauthorized. Verify your credentials "
+                    "(KAGGLE_USERNAME/KAGGLE_KEY or KAGGLE_API_TOKEN/KAGGLE_API_TOKEN_SECRET) "
+                    "and ensure you have accepted the competition rules."
+                ) from exc
+            raise
         extracted = self._extract_archives(dest_dir)
         return extracted
 
