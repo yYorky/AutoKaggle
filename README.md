@@ -228,6 +228,32 @@ To validate Phase 4 behavior via automated tests:
 pytest -q tests/test_chat_manager.py
 ```
 
+### Phase 5 (Code generation)
+
+Phase 5 reads the chat decisions and data profile to generate baseline scripts in the
+run `code/` directory along with a `requirements.txt` in `env/`. Run with Kaggle data
+downloaded and either enable chat or allow the default strategy decisions to be used:
+
+```
+KAGGLE_API_TOKEN=your_token
+GOOGLE_API_KEY=your_google_api_key
+
+python -m autokaggle run https://www.kaggle.com/competitions/{competition}
+```
+
+After the run, inspect the generated code:
+
+```
+ls runs/{run_id}/code
+cat runs/{run_id}/env/requirements.txt
+```
+
+To validate Phase 5 behavior via automated tests:
+
+```
+pytest -q tests/test_pipeline_generator.py
+```
+
 ## Testing
 
 ```

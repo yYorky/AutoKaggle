@@ -33,6 +33,14 @@ class ChatDecision:
         }
 
 
+def default_chat_decision() -> ChatDecision:
+    return ChatDecision(
+        model_family="lightgbm",
+        features=["baseline preprocessing"],
+        constraints=["fast baseline"],
+    )
+
+
 def run_chat_strategy(
     run_path: Path,
     competition_url: str,
@@ -51,6 +59,11 @@ def run_chat_strategy(
     decisions_path.write_text(json.dumps(decision.to_dict(), indent=2))
 
     return decision
+
+
+def write_chat_decisions(run_path: Path, decision: ChatDecision) -> None:
+    decisions_path = run_path / "input" / "chat_decisions.json"
+    decisions_path.write_text(json.dumps(decision.to_dict(), indent=2))
 
 
 def build_prompt(competition_url: str, profile: dict[str, Any]) -> str:
