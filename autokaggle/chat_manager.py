@@ -92,7 +92,7 @@ def build_prompt(
         f"{profile_payload}\n\n"
         "Respond with a JSON object containing:\n"
         "- model_family: short string (e.g., lightgbm, xgboost, catboost)\n"
-        "- features: list of feature engineering ideas\n"
+        "- features: list of feature engineering ideas including their formula\n"
         "- constraints: list of constraints or assumptions\n\n"
         "- evaluation_metric: use the competition evaluation metric name\n\n"
         "Use the competition page excerpt to confirm the evaluation metric and rules.\n\n"
