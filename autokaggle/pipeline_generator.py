@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from autokaggle.chat_manager import ChatDecision
+from autokaggle.config import get_llm_model_name
 from autokaggle.pipeline_templates import (
     render_data_loading,
     render_predict,
@@ -19,10 +20,6 @@ from autokaggle.pipeline_templates import (
     render_train,
     render_validate,
 )
-
-
-CODEGEN_MODEL_ENV = "AUTOKAGGLE_CODEGEN_MODEL"
-DEFAULT_CODEGEN_MODEL = "gemini-3-flash-preview"
 
 
 class CodegenModel(Protocol):
@@ -134,8 +131,7 @@ def _build_codegen_model() -> CodegenModel:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Set GOOGLE_API_KEY to run LLM code generation.")
-    model_name = os.getenv(CODEGEN_MODEL_ENV, DEFAULT_CODEGEN_MODEL)
-    return _GenAIModel(api_key=api_key, model_name=model_name)
+    return _GenAIModel(api_key=api_key, model_name=get_llm_model_name())
 
 
 def _build_codegen_prompt(

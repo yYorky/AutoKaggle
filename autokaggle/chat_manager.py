@@ -10,8 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-
-MODEL_NAME = "gemini-3-flash-preview"
+from autokaggle.config import get_llm_model_name
 
 
 class ChatModel(Protocol):
@@ -138,7 +137,7 @@ def _build_default_model() -> ChatModel:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Set GOOGLE_API_KEY to run the chat-guided strategy step.")
-    return _GenAIModel(api_key=api_key, model_name=MODEL_NAME)
+    return _GenAIModel(api_key=api_key, model_name=get_llm_model_name())
 
 
 def _extract_text(response: Any) -> str:
