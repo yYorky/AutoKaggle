@@ -28,6 +28,7 @@ def test_generate_pipeline_writes_assets(tmp_path: Path) -> None:
         model_family="lightgbm",
         features=["target encoding", "missing value imputation"],
         constraints=["fast baseline"],
+        evaluation_metric="RMSE",
     )
 
     assets = generate_pipeline(run_path, profile, decision)
@@ -46,4 +47,5 @@ def test_generate_pipeline_writes_assets(tmp_path: Path) -> None:
 
     strategy_content = (run_path / "code" / "strategy.py").read_text()
     assert "MODEL_FAMILY = 'lightgbm'" in strategy_content
+    assert "EVALUATION_METRIC = 'RMSE'" in strategy_content
     assert "target encoding" in strategy_content

@@ -24,20 +24,23 @@ class ChatDecision:
     model_family: str
     features: list[str]
     constraints: list[str]
+    evaluation_metric: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "model_family": self.model_family,
             "features": self.features,
             "constraints": self.constraints,
+            "evaluation_metric": self.evaluation_metric,
         }
 
 
-def default_chat_decision() -> ChatDecision:
+def default_chat_decision(evaluation_metric: str | None = None) -> ChatDecision:
     return ChatDecision(
         model_family="lightgbm",
         features=["baseline preprocessing"],
         constraints=["fast baseline"],
+        evaluation_metric=evaluation_metric or "accuracy",
     )
 
 
@@ -45,12 +48,13 @@ def run_chat_strategy(
     run_path: Path,
     competition_url: str,
     profile: dict[str, Any],
+    competition: dict[str, Any] | None = None,
     model: ChatModel | None = None,
 ) -> ChatDecision:
     """Run the chat-guided strategy step and persist transcript + decisions."""
-    prompt = build_prompt(competition_url, profile)
+    prompt = build_prompt(competition_url, profile, competition)
     response_text = _generate_response(prompt, model)
-    decision = parse_decisions(response_text)
+    decision = parse_decisions(response_text, competition)
 
     transcript_path = run_path / "input" / "chat_transcript.md"
     decisions_path = run_path / "input" / "chat_decisions.json"
@@ -66,29 +70,40 @@ def write_chat_decisions(run_path: Path, decision: ChatDecision) -> None:
     decisions_path.write_text(json.dumps(decision.to_dict(), indent=2))
 
 
-def build_prompt(competition_url: str, profile: dict[str, Any]) -> str:
+def build_prompt(competition_url: str, profile: dict[str, Any], competition: dict[str, Any] | None) -> str:
     """Build the prompt for the LLM chat-guided strategy step."""
     profile_payload = json.dumps(profile, indent=2)
+    competition_payload = json.dumps(competition or {}, indent=2)
     return (
         "You are an AutoKaggle assistant helping plan a baseline Kaggle solution.\n"
         f"Competition URL: {competition_url}\n\n"
+        "Competition details (JSON):\n"
+        f"{competition_payload}\n\n"
         "Data profile (JSON):\n"
         f"{profile_payload}\n\n"
         "Respond with a JSON object containing:\n"
         "- model_family: short string (e.g., lightgbm, xgboost, catboost)\n"
         "- features: list of feature engineering ideas\n"
         "- constraints: list of constraints or assumptions\n\n"
+        "- evaluation_metric: use the competition evaluation metric name\n\n"
         "Return ONLY valid JSON."
     )
 
 
-def parse_decisions(response_text: str) -> ChatDecision:
+def parse_decisions(response_text: str, competition: dict[str, Any] | None = None) -> ChatDecision:
     """Parse the model response into a ChatDecision."""
     payload = _extract_json(response_text)
+    default_metric = _resolve_evaluation_metric(competition)
     model_family = str(payload.get("model_family", "lightgbm"))
     features = _ensure_list(payload.get("features"), fallback=["baseline preprocessing"])
     constraints = _ensure_list(payload.get("constraints"), fallback=["fast baseline"])
-    return ChatDecision(model_family=model_family, features=features, constraints=constraints)
+    evaluation_metric = _ensure_string(payload.get("evaluation_metric"), fallback=default_metric)
+    return ChatDecision(
+        model_family=model_family,
+        features=features,
+        constraints=constraints,
+        evaluation_metric=evaluation_metric,
+    )
 
 
 def _generate_response(prompt: str, model: ChatModel | None) -> str:
@@ -134,6 +149,20 @@ def _ensure_list(value: Any, fallback: list[str]) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return fallback
+
+
+def _ensure_string(value: Any, fallback: str) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return fallback
+
+
+def _resolve_evaluation_metric(competition: dict[str, Any] | None) -> str:
+    if competition:
+        metric = competition.get("evaluation_metric")
+        if isinstance(metric, str) and metric.strip():
+            return metric.strip()
+    return "accuracy"
 
 
 def _format_transcript(prompt: str, response_text: str) -> str:

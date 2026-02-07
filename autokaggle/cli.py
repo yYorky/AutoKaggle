@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -26,15 +27,22 @@ def _handle_run(args: argparse.Namespace) -> int:
         client = KaggleClient()
         client.download_competition_data(args.competition_url, run_path / "input")
         client.ensure_sample_submission(args.competition_url, run_path / "input")
+        competition_metadata = client.fetch_competition_metadata(args.competition_url)
+        (run_path / "input" / "competition.json").write_text(json.dumps(competition_metadata, indent=2))
         store.update_status(run_path.name, "data_downloaded")
         profile = profile_competition_data(run_path / "input")
         write_profile(profile, run_path / "input" / "data_profile.json")
         store.update_status(run_path.name, "profiled")
         if not os.getenv("AUTOKAGGLE_SKIP_CHAT"):
-            decision = run_chat_strategy(run_path, args.competition_url, profile)
+            decision = run_chat_strategy(
+                run_path,
+                args.competition_url,
+                profile,
+                competition=competition_metadata,
+            )
             store.update_status(run_path.name, "chat_completed")
         else:
-            decision = default_chat_decision()
+            decision = default_chat_decision(competition_metadata.get("evaluation_metric"))
             write_chat_decisions(run_path, decision)
         generate_pipeline(run_path, profile, decision)
         store.update_status(run_path.name, "code_generated")

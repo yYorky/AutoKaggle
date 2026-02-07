@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -81,6 +81,29 @@ class KaggleClient:
                 return dest_dir / name
         return None
 
+    def fetch_competition_metadata(self, competition_url: str) -> dict[str, Any]:
+        competition = parse_competition_slug(competition_url)
+        data = None
+        if hasattr(self.api, "competition_view"):
+            try:
+                data = self.api.competition_view(competition)
+            except Exception as exc:  # noqa: BLE001 - kaggle client raises requests.HTTPError
+                message = str(exc)
+                if "401" in message or "403" in message:
+                    raise KaggleCredentialsError(
+                        "Kaggle API request was unauthorized. Verify your credentials "
+                        "(KAGGLE_API_TOKEN) and ensure you have accepted the competition rules."
+                    ) from exc
+                raise
+        elif hasattr(self.api, "competition_list"):
+            for entry in self.api.competition_list():
+                entry_slug = _extract_value(entry, ("ref", "slug"))
+                if entry_slug == competition:
+                    data = entry
+                    break
+        metadata = _extract_competition_metadata(data, competition)
+        return metadata
+
     @staticmethod
     def _extract_archives(dest_dir: Path) -> list[Path]:
         extracted: list[Path] = []
@@ -96,3 +119,32 @@ class KaggleClient:
             if path.is_file() and "sample_submission" in path.name.lower():
                 return path
         return None
+
+
+def _extract_competition_metadata(data: Any, competition: str) -> dict[str, Any]:
+    metadata = {
+        "slug": competition,
+        "title": None,
+        "evaluation_metric": None,
+        "deadline": None,
+        "description": None,
+        "rules": None,
+    }
+    if data is None:
+        return metadata
+
+    metadata["title"] = _extract_value(data, ("title", "name"))
+    metadata["evaluation_metric"] = _extract_value(data, ("evaluationMetric", "evaluation_metric"))
+    metadata["deadline"] = _extract_value(data, ("deadline", "deadline_date"))
+    metadata["description"] = _extract_value(data, ("description", "subtitle"))
+    metadata["rules"] = _extract_value(data, ("rules",))
+    return metadata
+
+
+def _extract_value(data: Any, keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if isinstance(data, dict) and key in data:
+            return data[key]
+        if hasattr(data, key):
+            return getattr(data, key)
+    return None
