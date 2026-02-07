@@ -46,6 +46,8 @@ def test_parse_competition_slug() -> None:
 def test_missing_credentials_raise(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KAGGLE_USERNAME", raising=False)
     monkeypatch.delenv("KAGGLE_KEY", raising=False)
+    monkeypatch.delenv("KAGGLE_API_TOKEN", raising=False)
+    monkeypatch.delenv("KAGGLE_API_TOKEN_SECRET", raising=False)
     with pytest.raises(KaggleCredentialsError):
         KaggleClient(api=FakeKaggleApi())
 
@@ -80,3 +82,11 @@ def test_ensure_sample_submission_downloads_if_missing(
 
     assert sample_path == tmp_path / "sample_submission.csv"
     assert sample_path.exists()
+
+
+def test_token_credentials_allow_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    monkeypatch.setenv("KAGGLE_API_TOKEN_SECRET", "secret")
+    client = KaggleClient(api=FakeKaggleApi())
+
+    assert client.api.authenticated
