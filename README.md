@@ -137,9 +137,11 @@ runs/
 Create a `.env` file in the repo root (copy from `.env.example`) and fill in:
 
 KAGGLE_API_TOKEN=your_token
+GOOGLE_API_KEY=your_google_api_key
 
 Alternatively, export it in your shell:
 export KAGGLE_API_TOKEN=your_token
+export GOOGLE_API_KEY=your_google_api_key
 
 # 2) Run AutoKaggle with a competition URL
 autokaggle run https://www.kaggle.com/competitions/{competition}
@@ -206,6 +208,24 @@ To validate Phase 3 behavior via automated tests:
 
 ```
 pytest -q tests/test_data_profiler.py
+```
+
+### Phase 4 (Chat-guided strategy)
+
+Phase 4 builds a prompt from competition metadata + the data profile, sends it to
+Gemini 3 Flash, and stores a `chat_transcript.md` and `chat_decisions.json` in the
+run `input/` directory. Ensure your Google API key is available:
+
+```
+GOOGLE_API_KEY=your_google_api_key
+
+python -m autokaggle run https://www.kaggle.com/competitions/{competition}
+```
+
+To validate Phase 4 behavior via automated tests:
+
+```
+pytest -q tests/test_chat_manager.py
 ```
 
 ## Testing
