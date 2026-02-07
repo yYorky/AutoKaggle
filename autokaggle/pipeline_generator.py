@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import csv
 import json
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from autokaggle.chat_manager import ChatDecision
+
+
+CODEGEN_MODEL_ENV = "AUTOKAGGLE_CODEGEN_MODEL"
+DEFAULT_CODEGEN_MODEL = "gemini-3-flash-preview"
+
+
+class CodegenModel(Protocol):
+    def generate_content(self, prompt: str) -> Any:  # pragma: no cover - protocol definition
+        """Generate content for the given prompt."""
+
+
+class _GenAIModel:
+    def __init__(self, api_key: str, model_name: str) -> None:
+        from google import genai
+
+        self._client = genai.Client(api_key=api_key)
+        self._model_name = model_name
+
+    def generate_content(self, prompt: str) -> Any:
+        return self._client.models.generate_content(model=self._model_name, contents=prompt)
 
 
 @dataclass(frozen=True)
@@ -29,7 +52,12 @@ def generate_pipeline(
     strategy_path = code_dir / "strategy.py"
     strategy_path.write_text(_render_strategy(decision))
 
-    files = {
+    llm_files: dict[str, str] | None = None
+    llm_requirements: list[str] | None = None
+    if os.getenv(CODEGEN_MODEL_ENV):
+        llm_files, llm_requirements = _render_pipeline_with_llm(run_path, profile, decision)
+
+    files = llm_files or {
         "data_loading.py": _render_data_loading(profile),
         "preprocess.py": _render_preprocess(profile),
         "train.py": _render_train(profile),
@@ -44,7 +72,10 @@ def generate_pipeline(
         code_files.append(path)
 
     requirements_path = env_dir / "requirements.txt"
-    requirements_path.write_text(_render_requirements(decision))
+    if llm_requirements:
+        requirements_path.write_text(_format_requirements(llm_requirements))
+    else:
+        requirements_path.write_text(_render_requirements(decision))
 
     return PipelineAssets(code_files=code_files, requirements_path=requirements_path)
 
@@ -59,6 +90,147 @@ def _render_strategy(decision: ChatDecision) -> str:
         f"FEATURE_IDEAS = {features}\n\n"
         f"CONSTRAINTS = {constraints}\n"
     )
+
+
+def _render_pipeline_with_llm(
+    run_path: Path,
+    profile: dict[str, Any],
+    decision: ChatDecision,
+) -> tuple[dict[str, str], list[str]]:
+    prompt = _build_codegen_prompt(run_path, profile, decision)
+    model = _build_codegen_model()
+    response = model.generate_content(prompt)
+    response_text = _extract_text(response)
+    payload = _extract_json(response_text)
+
+    files = payload.get("files", {})
+    if not isinstance(files, dict):
+        raise ValueError("LLM codegen response must include a files object.")
+    required_files = {"data_loading.py", "preprocess.py", "train.py", "validate.py", "predict.py"}
+    missing = required_files - set(files.keys())
+    if missing:
+        raise ValueError(f"LLM codegen response missing files: {sorted(missing)}")
+    requirements = payload.get("requirements", [])
+    if isinstance(requirements, str):
+        requirements = [line.strip() for line in requirements.splitlines() if line.strip()]
+    if not isinstance(requirements, list) or not requirements:
+        raise ValueError("LLM codegen response must include a requirements list.")
+    return {name: str(content) for name, content in files.items()}, [str(item) for item in requirements]
+
+
+def _build_codegen_model() -> CodegenModel:
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("Set GOOGLE_API_KEY to run LLM code generation.")
+    model_name = os.getenv(CODEGEN_MODEL_ENV, DEFAULT_CODEGEN_MODEL)
+    return _GenAIModel(api_key=api_key, model_name=model_name)
+
+
+def _build_codegen_prompt(
+    run_path: Path,
+    profile: dict[str, Any],
+    decision: ChatDecision,
+) -> str:
+    competition_payload = _load_competition_metadata(run_path)
+    sample_submission_payload = _load_sample_submission_preview(run_path, profile)
+    profile_payload = json.dumps(profile, indent=2)
+    decision_payload = json.dumps(decision.to_dict(), indent=2)
+    competition_json = json.dumps(competition_payload or {}, indent=2)
+    sample_json = json.dumps(sample_submission_payload or {}, indent=2)
+    return (
+        "You are an AutoKaggle code generator. Use the inputs to draft baseline scripts.\n"
+        "Return ONLY valid JSON with keys: files (object) and requirements (list).\n\n"
+        "Required files: data_loading.py, preprocess.py, train.py, validate.py, predict.py.\n"
+        "Constraints:\n"
+        "- Use the data profile + sample submission to infer targets and submission schema.\n"
+        "- Respect competition rules/metric hints in competition metadata.\n"
+        "- data_loading.py: load_training_data, load_test_data, load_sample_submission.\n"
+        "- preprocess.py: load_profile, build_preprocessor(profile) returning ColumnTransformer.\n"
+        "- train.py: train() trains model and writes model.joblib + metrics.json in output/.\n"
+        "- validate.py: validate() calls train() and prints metrics.\n"
+        "- predict.py: predict() writes submission.csv matching sample submission columns/order.\n"
+        "- Use only Python + the dependencies you list in requirements.\n"
+        "- Do not include Markdown fences.\n\n"
+        "Chat decisions (JSON):\n"
+        f"{decision_payload}\n\n"
+        "Data profile (JSON):\n"
+        f"{profile_payload}\n\n"
+        "Competition metadata (JSON):\n"
+        f"{competition_json}\n\n"
+        "Sample submission preview (JSON):\n"
+        f"{sample_json}\n\n"
+        "Return JSON with structure:\n"
+        "{\n"
+        '  "requirements": ["pandas>=...", "..."],\n'
+        '  "files": {"data_loading.py": "...", "preprocess.py": "...", "train.py": "...", "validate.py": "...", "predict.py": "..."}\n'
+        "}\n"
+    )
+
+
+def _load_competition_metadata(run_path: Path) -> dict[str, Any] | None:
+    metadata_path = run_path / "input" / "competition.json"
+    if not metadata_path.exists():
+        return None
+    return json.loads(metadata_path.read_text())
+
+
+def _load_sample_submission_preview(
+    run_path: Path,
+    profile: dict[str, Any],
+    max_rows: int = 3,
+) -> dict[str, Any] | None:
+    sample_file = profile.get("sample_submission_file")
+    if not sample_file:
+        return None
+    path = run_path / "input" / sample_file
+    if not path.exists():
+        return None
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return None
+        rows = []
+        for _ in range(max_rows):
+            try:
+                row = next(reader)
+            except StopIteration:
+                break
+            rows.append(row)
+    return {"columns": header, "rows": rows}
+
+
+def _extract_text(response: Any) -> str:
+    if hasattr(response, "text") and response.text:
+        return str(response.text)
+    if hasattr(response, "candidates") and response.candidates:
+        candidate = response.candidates[0]
+        if hasattr(candidate, "content") and candidate.content and candidate.content.parts:
+            return str(candidate.content.parts[0].text)
+    raise ValueError("Unable to extract text from LLM response.")
+
+
+def _extract_json(response_text: str) -> dict[str, Any]:
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", response_text, re.DOTALL)
+        if not match:
+            raise ValueError("LLM response did not contain JSON.")
+        return json.loads(match.group(0))
+
+
+def _format_requirements(requirements: list[str]) -> str:
+    deduped = []
+    seen = set()
+    for item in requirements:
+        normalized = item.strip()
+        if not normalized or normalized in seen:
+            continue
+        deduped.append(normalized)
+        seen.add(normalized)
+    return "\n".join(deduped) + "\n"
 
 
 def _render_data_loading(profile: dict[str, Any]) -> str:
