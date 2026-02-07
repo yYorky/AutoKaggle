@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from autokaggle.chat_manager import run_chat_strategy
 from autokaggle.data_profiler import profile_competition_data, write_profile
 from autokaggle.kaggle_client import KaggleClient
 from autokaggle.run_store import RunStore, default_run_root
@@ -28,6 +29,9 @@ def _handle_run(args: argparse.Namespace) -> int:
         profile = profile_competition_data(run_path / "input")
         write_profile(profile, run_path / "input" / "data_profile.json")
         store.update_status(run_path.name, "profiled")
+        if not os.getenv("AUTOKAGGLE_SKIP_CHAT"):
+            run_chat_strategy(run_path, args.competition_url, profile)
+            store.update_status(run_path.name, "chat_completed")
     print(f"Run created: {run_path}")
     return 0
 
