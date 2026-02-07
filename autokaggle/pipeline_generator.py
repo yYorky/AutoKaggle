@@ -52,18 +52,7 @@ def generate_pipeline(
     strategy_path = code_dir / "strategy.py"
     strategy_path.write_text(_render_strategy(decision))
 
-    llm_files: dict[str, str] | None = None
-    llm_requirements: list[str] | None = None
-    if os.getenv(CODEGEN_MODEL_ENV):
-        llm_files, llm_requirements = _render_pipeline_with_llm(run_path, profile, decision)
-
-    files = llm_files or {
-        "data_loading.py": _render_data_loading(profile),
-        "preprocess.py": _render_preprocess(profile),
-        "train.py": _render_train(profile),
-        "validate.py": _render_validate(profile),
-        "predict.py": _render_predict(profile),
-    }
+    files, llm_requirements = _render_pipeline_with_llm(run_path, profile, decision)
 
     code_files = [strategy_path]
     for name, payload in files.items():
@@ -72,10 +61,7 @@ def generate_pipeline(
         code_files.append(path)
 
     requirements_path = env_dir / "requirements.txt"
-    if llm_requirements:
-        requirements_path.write_text(_format_requirements(llm_requirements))
-    else:
-        requirements_path.write_text(_render_requirements(decision))
+    requirements_path.write_text(_format_requirements(llm_requirements))
 
     return PipelineAssets(code_files=code_files, requirements_path=requirements_path)
 
@@ -149,6 +135,7 @@ def _build_codegen_prompt(
         "- train.py: train() trains model and writes model.joblib + metrics.json in output/.\n"
         "- validate.py: validate() calls train() and prints metrics.\n"
         "- predict.py: predict() writes submission.csv matching sample submission columns/order.\n"
+        "- predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.\n"
         "- Use only Python + the dependencies you list in requirements.\n"
         "- Do not include Markdown fences.\n\n"
         "Chat decisions (JSON):\n"
@@ -482,8 +469,17 @@ def _render_predict(profile: dict[str, Any]) -> str:
         "import joblib\n\n"
         "from data_loading import load_sample_submission, load_test_data\n"
         "from preprocess import load_profile\n"
+        "from strategy import EVALUATION_METRIC\n"
         "from train import _infer_target\n\n"
         f"TARGET_COLUMNS = {target_columns!r}\n\n"
+        "\n"
+        "def _normalize_metric(metric: str) -> str:\n"
+        "    metric = metric.lower().strip()\n"
+        "    if 'auc' in metric:\n"
+        "        return 'roc_auc'\n"
+        "    if 'logloss' in metric or 'log loss' in metric:\n"
+        "        return 'log_loss'\n"
+        "    return metric\n\n"
         "\n"
         "def predict() -> Path:\n"
         "    run_root = Path(__file__).resolve().parents[1]\n"
@@ -495,18 +491,29 @@ def _render_predict(profile: dict[str, Any]) -> str:
         "    test_df = load_test_data()\n"
         "    if test_df is None:\n"
         "        raise FileNotFoundError('No test data found for prediction.')\n\n"
-        "    predictions = model.predict(test_df)\n"
+        "    metric_name = _normalize_metric(EVALUATION_METRIC)\n"
+        "    use_probabilities = metric_name in {'log_loss', 'roc_auc'} and hasattr(model, 'predict_proba')\n"
+        "    if use_probabilities:\n"
+        "        predictions = model.predict_proba(test_df)\n"
+        "    else:\n"
+        "        predictions = model.predict(test_df)\n"
         "    sample = load_sample_submission()\n\n"
         "    if sample is None:\n"
         "        profile = load_profile()\n"
         "        target_column = _infer_target(profile)\n"
         "        sample = test_df[[test_df.columns[0]]].copy()\n"
         "        sample.columns = ['id']\n"
-        "        sample[target_column] = predictions\n"
+        "        if use_probabilities and getattr(predictions, 'ndim', 1) > 1:\n"
+        "            sample[target_column] = predictions[:, -1]\n"
+        "        else:\n"
+        "            sample[target_column] = predictions\n"
         "    else:\n"
         "        target_cols = [col for col in sample.columns if col.lower() not in {'id', 'index'}]\n"
         "        if len(target_cols) == 1:\n"
-        "            sample[target_cols[0]] = predictions\n"
+        "            if use_probabilities and getattr(predictions, 'ndim', 1) > 1:\n"
+        "                sample[target_cols[0]] = predictions[:, -1]\n"
+        "            else:\n"
+        "                sample[target_cols[0]] = predictions\n"
         "        else:\n"
         "            for idx, col in enumerate(target_cols):\n"
         "                sample[col] = predictions[:, idx]\n\n"
