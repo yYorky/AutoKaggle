@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from autokaggle.chat_manager import default_chat_decision, run_chat_strategy, write_chat_decisions
 from autokaggle.competition_page import fetch_competition_page_text
 from autokaggle.data_profiler import profile_competition_data, write_profile
+from autokaggle.executor import run_pipeline
 from autokaggle.kaggle_client import KaggleClient
 from autokaggle.pipeline_generator import generate_pipeline
 from autokaggle.run_store import RunStore, default_run_root
@@ -47,8 +48,11 @@ def _handle_run(args: argparse.Namespace) -> int:
         else:
             decision = default_chat_decision(competition_metadata.get("evaluation_metric"))
             write_chat_decisions(run_path, decision)
-        generate_pipeline(run_path, profile, decision)
+        assets = generate_pipeline(run_path, profile, decision)
         store.update_status(run_path.name, "code_generated")
+        if not os.getenv("AUTOKAGGLE_SKIP_EXECUTION"):
+            run_pipeline(run_path, assets.requirements_path)
+            store.update_status(run_path.name, "executed")
     print(f"Run created: {run_path}")
     return 0
 
