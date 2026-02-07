@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 import pandas as pd
@@ -53,7 +54,7 @@ def profile_competition_data(input_dir: Path) -> dict[str, Any]:
         else:
             categorical_columns.append(column)
 
-    target_inference = _infer_targets(sample_path)
+    target_inference = _infer_targets(sample_path, list(train_df.columns))
 
     profile = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -91,17 +92,40 @@ def _find_sample_submission(input_dir: Path) -> Path | None:
     return None
 
 
-def _infer_targets(sample_path: Path | None) -> TargetInference:
+def _infer_targets(sample_path: Path | None, train_columns: list[str]) -> TargetInference:
+    def _normalize(column: str) -> str:
+        return re.sub(r"[\s_]+", "", column.strip().lower())
+
+    fallback_candidates = [
+        col for col in train_columns if col.strip().lower() not in {"id", "index"}
+    ]
+
     if sample_path is None:
-        return TargetInference(columns=[], source="sample_submission", notes="No sample submission found.")
+        notes = "No sample submission found; using last non-id training column."
+        columns = fallback_candidates[-1:] if fallback_candidates else []
+        return TargetInference(columns=columns, source="train", notes=notes)
 
     sample_df = pd.read_csv(sample_path, nrows=1)
-    columns = [
+    candidates = [
         col
         for col in sample_df.columns
         if col.strip().lower() not in {"id", "index"}
     ]
     notes = "Targets inferred from sample submission columns excluding id/index."
-    if not columns:
+    if not candidates:
         notes = "No target-like columns found in sample submission."
-    return TargetInference(columns=columns, source="sample_submission", notes=notes)
+    valid = [col for col in candidates if col in train_columns]
+    if not valid and candidates and train_columns:
+        normalized_map = {_normalize(col): col for col in train_columns}
+        for candidate in candidates:
+            normalized = _normalize(candidate)
+            if normalized in normalized_map:
+                valid.append(normalized_map[normalized])
+        if valid:
+            notes = "Targets matched from sample submission using normalized column names."
+
+    if not valid and fallback_candidates:
+        valid = [fallback_candidates[-1]]
+        notes = "Sample submission targets missing in training data; using last non-id training column."
+
+    return TargetInference(columns=valid, source="sample_submission", notes=notes)
