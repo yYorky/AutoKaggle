@@ -57,6 +57,8 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
   - validation
   - prediction and submission
 - Write scripts into a run-scoped folder.
+- When `AUTOKAGGLE_CODEGEN_MODEL` is set, use the configured LLM to generate scripts
+  from chat decisions, the data profile, and sample submission schema.
 
 ### 5.6 Local execution
 - Create a virtual environment for each run.

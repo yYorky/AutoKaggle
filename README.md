@@ -146,10 +146,12 @@ Create a `.env` file in the repo root (copy from `.env.example`) and fill in:
 
 KAGGLE_API_TOKEN=your_token
 GOOGLE_API_KEY=your_google_api_key
+AUTOKAGGLE_CODEGEN_MODEL=gemini-3-flash-preview
 
 Alternatively, export it in your shell:
 export KAGGLE_API_TOKEN=your_token
 export GOOGLE_API_KEY=your_google_api_key
+export AUTOKAGGLE_CODEGEN_MODEL=gemini-3-flash-preview
 
 # 2) Run AutoKaggle with a competition URL
 autokaggle run https://www.kaggle.com/competitions/{competition}
@@ -240,8 +242,11 @@ pytest -q tests/test_chat_manager.py
 ### Phase 5 (Code generation)
 
 Phase 5 reads the chat decisions and data profile to generate baseline scripts in the
-run `code/` directory along with a `requirements.txt` in `env/`. Run with Kaggle data
-downloaded and either enable chat or allow the default strategy decisions to be used:
+run `code/` directory along with a `requirements.txt` in `env/`. If you set
+`AUTOKAGGLE_CODEGEN_MODEL`, AutoKaggle asks the configured LLM to draft the pipeline
+scripts using the chat decisions, data profile, and sample submission schema. Run with
+Kaggle data downloaded and either enable chat or allow the default strategy decisions
+to be used:
 
 ```
 KAGGLE_API_TOKEN=your_token
