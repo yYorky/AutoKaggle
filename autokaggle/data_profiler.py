@@ -58,8 +58,8 @@ def profile_competition_data(input_dir: Path) -> dict[str, Any]:
 
     profile = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "train_file": train_path.name,
-        "sample_submission_file": sample_path.name if sample_path else None,
+        "train_file": _relative_to_input(train_path, input_dir),
+        "sample_submission_file": _relative_to_input(sample_path, input_dir) if sample_path else None,
         "rows": int(train_df.shape[0]),
         "columns": int(train_df.shape[1]),
         "numeric_columns": numeric_columns,
@@ -78,18 +78,28 @@ def _find_train_csv(input_dir: Path) -> Path | None:
     preferred = input_dir / "train.csv"
     if preferred.exists():
         return preferred
-    for path in input_dir.glob("*.csv"):
-        if "sample_submission" in path.name.lower():
+    candidates = _list_csv_files(input_dir)
+    for path in candidates:
+        name = path.name.lower()
+        if "sample_submission" in name or name == "test.csv":
             continue
         return path
     return None
 
 
 def _find_sample_submission(input_dir: Path) -> Path | None:
-    for path in input_dir.glob("*.csv"):
+    for path in _list_csv_files(input_dir):
         if "sample_submission" in path.name.lower():
             return path
     return None
+
+
+def _list_csv_files(input_dir: Path) -> list[Path]:
+    return sorted(input_dir.rglob("*.csv"), key=lambda path: path.as_posix())
+
+
+def _relative_to_input(path: Path, input_dir: Path) -> str:
+    return path.relative_to(input_dir).as_posix()
 
 
 def _infer_targets(sample_path: Path | None, train_columns: list[str]) -> TargetInference:

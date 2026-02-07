@@ -205,8 +205,10 @@ pytest -q tests/test_kaggle_client.py
 ### Phase 3 (Data profiling)
 
 Phase 3 generates `data_profile.json` inside the run `input/` directory with schema,
-missingness, and target inference details. Run a Phase 3 download locally after
-authenticating with Kaggle:
+missingness, and target inference details. The profiler searches for CSVs recursively
+inside `input/`, stores relative file paths (so nested datasets work), and prefers
+`train.csv` when available. Run a Phase 3 download locally after authenticating with
+Kaggle:
 
 ```
 KAGGLE_API_TOKEN=your_token
@@ -275,6 +277,10 @@ generated `requirements.txt`, and runs `validate.py` and `predict.py` to produce
 `metrics.json`, `model.joblib`, and `submission.csv` under `output/`. You can skip
 local execution by setting `AUTOKAGGLE_SKIP_EXECUTION=1` if you only want artifacts
 generated up to code scaffolding.
+
+The generated loaders attempt to resolve `train.csv`, `test.csv`, and
+`sample_submission.csv` by name first, then fall back to the first suitable CSV found
+recursively under `input/` if the expected filenames are missing.
 
 ```
 KAGGLE_API_TOKEN=your_token

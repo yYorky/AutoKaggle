@@ -40,7 +40,7 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
 ### 5.3 Data profiling
 - Detect schema, missingness, data types.
 - Infer potential target column from sample submission.
-- Persist a machine-readable profile JSON.
+- Persist a machine-readable profile JSON with relative CSV paths to handle nested datasets.
 
 ### 5.4 Chat-guided strategy step
 - Provide the LLM with competition context + data profile.
@@ -57,6 +57,7 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
   - validation
   - prediction and submission
 - Write scripts into a run-scoped folder.
+- Loaders should resolve training/test/sample CSVs by name and fall back to the first suitable CSV found recursively.
 - When `AUTOKAGGLE_CODEGEN_MODEL` is set, use the configured LLM to generate scripts
   from chat decisions, the data profile, and sample submission schema.
 
