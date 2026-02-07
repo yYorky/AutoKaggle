@@ -1,5 +1,5 @@
 # Requires Python >= 3.10
-kaggle>=1.8.0
+kaggle
 pandas>=2.2.2
 numpy>=1.26.4
 scikit-learn>=1.4.2
