@@ -38,6 +38,15 @@ class FakeKaggleApi:
         target.write_text("target\n0\n")
         self.downloaded_files.append((file_name, target))
 
+    def competition_view(self, competition: str) -> dict[str, str]:
+        return {
+            "title": "Sample Competition",
+            "evaluationMetric": "RMSE",
+            "deadline": "2024-01-01T00:00:00Z",
+            "description": "Predict values.",
+            "rules": "No rules.",
+        }
+
 
 def test_parse_competition_slug() -> None:
     assert parse_competition_slug("https://www.kaggle.com/competitions/titanic") == "titanic"
@@ -92,3 +101,14 @@ def test_token_missing_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KAGGLE_API_TOKEN", raising=False)
     with pytest.raises(KaggleCredentialsError, match="KAGGLE_API_TOKEN"):
         KaggleClient(api=FakeKaggleApi())
+
+
+def test_fetch_competition_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    client = KaggleClient(api=FakeKaggleApi())
+
+    metadata = client.fetch_competition_metadata("https://www.kaggle.com/competitions/titanic")
+
+    assert metadata["slug"] == "titanic"
+    assert metadata["evaluation_metric"] == "RMSE"
+    assert metadata["title"] == "Sample Competition"

@@ -29,11 +29,13 @@ def test_run_chat_strategy_persists_outputs(tmp_path: Path) -> None:
         "columns": 3,
         "target_inference": {"columns": ["target"], "source": "sample_submission", "notes": "ok"},
     }
+    competition = {"evaluation_metric": "RMSE"}
     response_text = json.dumps(
         {
             "model_family": "lightgbm",
             "features": ["imputation", "one-hot encoding"],
             "constraints": ["fast baseline"],
+            "evaluation_metric": "RMSE",
         }
     )
     model = FakeModel(response_text)
@@ -42,6 +44,7 @@ def test_run_chat_strategy_persists_outputs(tmp_path: Path) -> None:
         run_path=run_path,
         competition_url="https://www.kaggle.com/competitions/test",
         profile=profile,
+        competition=competition,
         model=model,
     )
 
@@ -54,4 +57,5 @@ def test_run_chat_strategy_persists_outputs(tmp_path: Path) -> None:
     decisions = json.loads(decisions_path.read_text())
     assert decisions["model_family"] == "lightgbm"
     assert decisions["features"] == ["imputation", "one-hot encoding"]
+    assert decisions["evaluation_metric"] == "RMSE"
     assert decision.model_family == "lightgbm"
