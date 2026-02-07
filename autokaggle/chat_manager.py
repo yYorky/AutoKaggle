@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 
-MODEL_NAME = "gemini-3.0-flash"
+MODEL_NAME = "gemini-3-flash-preview"
 
 
 class ChatModel(Protocol):
