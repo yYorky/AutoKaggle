@@ -123,14 +123,22 @@ def _generate_response(prompt: str, model: ChatModel | None) -> str:
     return _extract_text(response)
 
 
+class _GenAIModel:
+    def __init__(self, api_key: str, model_name: str) -> None:
+        from google import genai
+
+        self._client = genai.Client(api_key=api_key)
+        self._model_name = model_name
+
+    def generate_content(self, prompt: str) -> Any:
+        return self._client.models.generate_content(model=self._model_name, contents=prompt)
+
+
 def _build_default_model() -> ChatModel:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Set GOOGLE_API_KEY to run the chat-guided strategy step.")
-    import google.generativeai as genai
-
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel(MODEL_NAME)
+    return _GenAIModel(api_key=api_key, model_name=MODEL_NAME)
 
 
 def _extract_text(response: Any) -> str:
