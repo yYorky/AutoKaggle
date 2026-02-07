@@ -167,17 +167,30 @@ Run tests from the repo root:
 pytest -q
 ```
 
-## Testing (planned)
+### Phase 2 (Kaggle API integration)
 
-> This section will be finalized once the CLI is implemented.
+To run a Phase 2 download locally, ensure your Kaggle credentials are available in the
+environment and then start a run. The CLI will download and extract the competition data
+into the run's `input/` directory.
 
 ```
-# Basic smoke test for CLI entrypoint
-pytest -m smoke
+export KAGGLE_USERNAME=your_name
+export KAGGLE_KEY=your_key
 
-# Lint + type checks
-ruff check .
-pyright
+python -m autokaggle run https://www.kaggle.com/competitions/{competition}
+```
+
+To validate Phase 2 behavior via automated tests:
+
+```
+pytest -q tests/test_kaggle_client.py
+```
+
+## Testing
+
+```
+# Run the full test suite
+pytest -q
 ```
 
 ## Next steps
