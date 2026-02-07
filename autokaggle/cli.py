@@ -7,11 +7,14 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from autokaggle.kaggle_client import KaggleClient
 from autokaggle.run_store import RunStore, default_run_root
 
 
 def _handle_run(args: argparse.Namespace) -> int:
+    load_dotenv(dotenv_path=Path.cwd() / ".env")
     run_root = default_run_root()
     run_root.mkdir(parents=True, exist_ok=True)
     store = RunStore(run_root)
