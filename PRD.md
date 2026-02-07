@@ -61,11 +61,12 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
 ### 5.6 Local execution
 - Create a virtual environment for each run.
 - Install required dependencies.
-- Execute the pipeline with logging.
-- Capture metrics and artifacts.
+- Execute the pipeline with logging (train/validate/predict).
+- Capture metrics (`metrics.json`), model artifacts, and errors in the run logs.
 
 ### 5.7 Output artifacts
 - `submission.csv` with the correct schema.
+- `model.joblib` and `metrics.json` stored in `output/`.
 - Logs, config, and run metadata stored in the run directory.
 
 ## 6) Non-functional requirements

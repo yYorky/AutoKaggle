@@ -74,9 +74,10 @@ runs/
       config.yaml
     env/
       requirements.txt
+      venv/
     output/
-      model.pkl
-      oof.csv
+      model.joblib
+      metrics.json
       submission.csv
     logs/
       run.log
@@ -260,6 +261,21 @@ To validate Phase 5 behavior via automated tests:
 
 ```
 pytest -q tests/test_pipeline_generator.py
+```
+
+### Phase 6 (Local execution)
+
+Phase 6 creates a virtual environment under the run `env/` directory, installs the
+generated `requirements.txt`, and runs `validate.py` and `predict.py` to produce
+`metrics.json`, `model.joblib`, and `submission.csv` under `output/`. You can skip
+local execution by setting `AUTOKAGGLE_SKIP_EXECUTION=1` if you only want artifacts
+generated up to code scaffolding.
+
+```
+KAGGLE_API_TOKEN=your_token
+GOOGLE_API_KEY=your_google_api_key
+
+python -m autokaggle run https://www.kaggle.com/competitions/{competition}
 ```
 
 ## Testing
