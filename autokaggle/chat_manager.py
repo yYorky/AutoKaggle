@@ -49,10 +49,11 @@ def run_chat_strategy(
     competition_url: str,
     profile: dict[str, Any],
     competition: dict[str, Any] | None = None,
+    competition_page_text: str | None = None,
     model: ChatModel | None = None,
 ) -> ChatDecision:
     """Run the chat-guided strategy step and persist transcript + decisions."""
-    prompt = build_prompt(competition_url, profile, competition)
+    prompt = build_prompt(competition_url, profile, competition, competition_page_text)
     response_text = _generate_response(prompt, model)
     decision = parse_decisions(response_text, competition)
 
@@ -70,13 +71,21 @@ def write_chat_decisions(run_path: Path, decision: ChatDecision) -> None:
     decisions_path.write_text(json.dumps(decision.to_dict(), indent=2))
 
 
-def build_prompt(competition_url: str, profile: dict[str, Any], competition: dict[str, Any] | None) -> str:
+def build_prompt(
+    competition_url: str,
+    profile: dict[str, Any],
+    competition: dict[str, Any] | None,
+    competition_page_text: str | None,
+) -> str:
     """Build the prompt for the LLM chat-guided strategy step."""
     profile_payload = json.dumps(profile, indent=2)
     competition_payload = json.dumps(competition or {}, indent=2)
+    page_excerpt = _truncate_content(competition_page_text)
     return (
         "You are an AutoKaggle assistant helping plan a baseline Kaggle solution.\n"
         f"Competition URL: {competition_url}\n\n"
+        "Competition page content (text excerpt):\n"
+        f"{page_excerpt}\n\n"
         "Competition details (JSON):\n"
         f"{competition_payload}\n\n"
         "Data profile (JSON):\n"
@@ -86,6 +95,7 @@ def build_prompt(competition_url: str, profile: dict[str, Any], competition: dic
         "- features: list of feature engineering ideas\n"
         "- constraints: list of constraints or assumptions\n\n"
         "- evaluation_metric: use the competition evaluation metric name\n\n"
+        "Use the competition page excerpt to confirm the evaluation metric and rules.\n\n"
         "Return ONLY valid JSON."
     )
 
@@ -163,6 +173,17 @@ def _resolve_evaluation_metric(competition: dict[str, Any] | None) -> str:
         if isinstance(metric, str) and metric.strip():
             return metric.strip()
     return "accuracy"
+
+
+def _truncate_content(text: str | None, limit: int = 4000) -> str:
+    if not text:
+        return "Not available."
+    if len(text) <= limit:
+        return text
+    truncated = text[:limit].rsplit(" ", 1)[0]
+    if not truncated:
+        truncated = text[:limit]
+    return f"{truncated} ...[truncated]"
 
 
 def _format_transcript(prompt: str, response_text: str) -> str:

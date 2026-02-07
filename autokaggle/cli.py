@@ -11,6 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from autokaggle.chat_manager import default_chat_decision, run_chat_strategy, write_chat_decisions
+from autokaggle.competition_page import fetch_competition_page_text
 from autokaggle.data_profiler import profile_competition_data, write_profile
 from autokaggle.kaggle_client import KaggleClient
 from autokaggle.pipeline_generator import generate_pipeline
@@ -34,11 +35,13 @@ def _handle_run(args: argparse.Namespace) -> int:
         write_profile(profile, run_path / "input" / "data_profile.json")
         store.update_status(run_path.name, "profiled")
         if not os.getenv("AUTOKAGGLE_SKIP_CHAT"):
+            competition_page_text = fetch_competition_page_text(args.competition_url)
             decision = run_chat_strategy(
                 run_path,
                 args.competition_url,
                 profile,
                 competition=competition_metadata,
+                competition_page_text=competition_page_text,
             )
             store.update_status(run_path.name, "chat_completed")
         else:

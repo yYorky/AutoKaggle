@@ -44,7 +44,8 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
 
 ### 5.4 Chat-guided strategy step
 - Provide the LLM with competition context + data profile.
-- Run a guided prompt to propose baseline approach.
+- Include the competition URL page text so the LLM can review rules and evaluation details.
+- Run a guided prompt to propose baseline approach and confirm the evaluation metric.
 - Allow user to accept/edit key choices (model family, features, constraints).
 - Persist transcript and decisions.
 

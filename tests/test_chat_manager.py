@@ -40,11 +40,13 @@ def test_run_chat_strategy_persists_outputs(tmp_path: Path) -> None:
     )
     model = FakeModel(response_text)
 
+    competition_page_text = "Evaluation metric: RMSE. Use root mean squared error."
     decision = run_chat_strategy(
         run_path=run_path,
         competition_url="https://www.kaggle.com/competitions/test",
         profile=profile,
         competition=competition,
+        competition_page_text=competition_page_text,
         model=model,
     )
 
@@ -59,3 +61,5 @@ def test_run_chat_strategy_persists_outputs(tmp_path: Path) -> None:
     assert decisions["features"] == ["imputation", "one-hot encoding"]
     assert decisions["evaluation_metric"] == "RMSE"
     assert decision.model_family == "lightgbm"
+    assert model.prompts
+    assert competition_page_text in model.prompts[0]
