@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from autokaggle.data_profiler import profile_competition_data, write_profile
 from autokaggle.kaggle_client import KaggleClient
 from autokaggle.run_store import RunStore, default_run_root
 
@@ -24,6 +25,9 @@ def _handle_run(args: argparse.Namespace) -> int:
         client.download_competition_data(args.competition_url, run_path / "input")
         client.ensure_sample_submission(args.competition_url, run_path / "input")
         store.update_status(run_path.name, "data_downloaded")
+        profile = profile_competition_data(run_path / "input")
+        write_profile(profile, run_path / "input" / "data_profile.json")
+        store.update_status(run_path.name, "profiled")
     print(f"Run created: {run_path}")
     return 0
 
