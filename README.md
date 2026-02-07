@@ -134,23 +134,12 @@ runs/
 
 ```
 # 1) Authenticate with Kaggle (once)
-Create a `.env` file in the repo root (copy from `.env.example`) and fill in either:
+Create a `.env` file in the repo root (copy from `.env.example`) and fill in:
 
-- Legacy credentials:
-  KAGGLE_USERNAME=your_name
-  KAGGLE_KEY=your_key
-- New API tokens (Kaggle CLI >= 1.8.0 or kagglehub >= 0.4.1):
-  KAGGLE_API_TOKEN=your_token
-  KAGGLE_API_TOKEN_SECRET=your_token_secret
+KAGGLE_API_TOKEN=your_token
 
-Alternatively, export them in your shell:
-export KAGGLE_USERNAME=your_name
-export KAGGLE_KEY=your_key
-
-or
-
+Alternatively, export it in your shell:
 export KAGGLE_API_TOKEN=your_token
-export KAGGLE_API_TOKEN_SECRET=your_token_secret
 
 # 2) Run AutoKaggle with a competition URL
 autokaggle run https://www.kaggle.com/competitions/{competition}
@@ -185,18 +174,12 @@ pytest -q
 
 ### Phase 2 (Kaggle API integration)
 
-To run a Phase 2 download locally, ensure your Kaggle credentials are available in the
+To run a Phase 2 download locally, ensure your Kaggle token is available in the
 environment (or in a local `.env` file) and then start a run. The CLI will download and
 extract the competition data into the run's `input/` directory.
 
 ```
-KAGGLE_USERNAME=your_name
-KAGGLE_KEY=your_key
-
-# or
-
 KAGGLE_API_TOKEN=your_token
-KAGGLE_API_TOKEN_SECRET=your_token_secret
 
 python -m autokaggle run https://www.kaggle.com/competitions/{competition}
 ```

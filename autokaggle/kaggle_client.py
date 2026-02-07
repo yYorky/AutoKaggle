@@ -32,23 +32,10 @@ def parse_competition_slug(competition_url: str) -> str:
     raise ValueError(f"Unable to parse competition slug from URL: {competition_url}")
 
 
-def _has_env_vars(*names: str) -> bool:
-    return all(os.getenv(name) for name in names)
-
-
 def _ensure_credentials() -> None:
-    legacy = _has_env_vars("KAGGLE_USERNAME", "KAGGLE_KEY")
-    tokens = _has_env_vars("KAGGLE_API_TOKEN", "KAGGLE_API_TOKEN_SECRET")
-    if legacy or tokens:
-        return
     if os.getenv("KAGGLE_API_TOKEN"):
-        raise KaggleCredentialsError(
-            "KAGGLE_API_TOKEN is set but KAGGLE_API_TOKEN_SECRET is missing. "
-            "Set both variables to download competition data."
-        )
-    raise KaggleCredentialsError(
-        "Set KAGGLE_USERNAME/KAGGLE_KEY or KAGGLE_API_TOKEN/KAGGLE_API_TOKEN_SECRET to download competition data."
-    )
+        return
+    raise KaggleCredentialsError("Set KAGGLE_API_TOKEN to download competition data.")
 
 
 class KaggleClient:
@@ -74,8 +61,7 @@ class KaggleClient:
             if "401" in message or "403" in message:
                 raise KaggleCredentialsError(
                     "Kaggle API request was unauthorized. Verify your credentials "
-                    "(KAGGLE_USERNAME/KAGGLE_KEY or KAGGLE_API_TOKEN/KAGGLE_API_TOKEN_SECRET) "
-                    "and ensure you have accepted the competition rules."
+                    "(KAGGLE_API_TOKEN) and ensure you have accepted the competition rules."
                 ) from exc
             raise
         extracted = self._extract_archives(dest_dir)

@@ -46,17 +46,13 @@ def test_parse_competition_slug() -> None:
 
 
 def test_missing_credentials_raise(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("KAGGLE_USERNAME", raising=False)
-    monkeypatch.delenv("KAGGLE_KEY", raising=False)
     monkeypatch.delenv("KAGGLE_API_TOKEN", raising=False)
-    monkeypatch.delenv("KAGGLE_API_TOKEN_SECRET", raising=False)
     with pytest.raises(KaggleCredentialsError):
         KaggleClient(api=FakeKaggleApi())
 
 
 def test_download_competition_data_extracts_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KAGGLE_USERNAME", "user")
-    monkeypatch.setenv("KAGGLE_KEY", "key")
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
     client = KaggleClient(api=FakeKaggleApi())
 
     extracted = client.download_competition_data(
@@ -72,8 +68,7 @@ def test_download_competition_data_extracts_files(tmp_path: Path, monkeypatch: p
 def test_ensure_sample_submission_downloads_if_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("KAGGLE_USERNAME", "user")
-    monkeypatch.setenv("KAGGLE_KEY", "key")
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
     api = FakeKaggleApi()
     client = KaggleClient(api=api)
 
@@ -88,14 +83,12 @@ def test_ensure_sample_submission_downloads_if_missing(
 
 def test_token_credentials_allow_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
-    monkeypatch.setenv("KAGGLE_API_TOKEN_SECRET", "secret")
     client = KaggleClient(api=FakeKaggleApi())
 
     assert client.api.authenticated
 
 
-def test_token_missing_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
-    monkeypatch.delenv("KAGGLE_API_TOKEN_SECRET", raising=False)
-    with pytest.raises(KaggleCredentialsError, match="KAGGLE_API_TOKEN_SECRET"):
+def test_token_missing_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KAGGLE_API_TOKEN", raising=False)
+    with pytest.raises(KaggleCredentialsError, match="KAGGLE_API_TOKEN"):
         KaggleClient(api=FakeKaggleApi())

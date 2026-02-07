@@ -33,7 +33,7 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
 - `autokaggle logs <run_id>` tails run logs.
 
 ### 5.2 Kaggle API integration
-- Support authentication via `KAGGLE_USERNAME` and `KAGGLE_KEY`.
+- Support authentication via `KAGGLE_API_TOKEN`.
 - Download competition data and sample submission.
 - Fetch competition rules/metric details where possible.
 
