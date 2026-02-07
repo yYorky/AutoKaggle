@@ -190,6 +190,24 @@ To validate Phase 2 behavior via automated tests:
 pytest -q tests/test_kaggle_client.py
 ```
 
+### Phase 3 (Data profiling)
+
+Phase 3 generates `data_profile.json` inside the run `input/` directory with schema,
+missingness, and target inference details. Run a Phase 3 download locally after
+authenticating with Kaggle:
+
+```
+KAGGLE_API_TOKEN=your_token
+
+python -m autokaggle run https://www.kaggle.com/competitions/{competition}
+```
+
+To validate Phase 3 behavior via automated tests:
+
+```
+pytest -q tests/test_data_profiler.py
+```
+
 ## Testing
 
 ```
