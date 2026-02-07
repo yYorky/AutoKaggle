@@ -19,8 +19,14 @@ class KaggleCredentialsError(ValueError):
 def parse_competition_slug(competition_url: str) -> str:
     parsed = urlparse(competition_url)
     parts = [part for part in parsed.path.split("/") if part]
+    if not parsed.scheme and not parsed.netloc and parts:
+        return parts[0]
     if "competitions" in parts:
         index = parts.index("competitions")
+        if index + 1 < len(parts):
+            return parts[index + 1]
+    if "c" in parts:
+        index = parts.index("c")
         if index + 1 < len(parts):
             return parts[index + 1]
     raise ValueError(f"Unable to parse competition slug from URL: {competition_url}")

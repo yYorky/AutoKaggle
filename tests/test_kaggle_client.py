@@ -41,6 +41,8 @@ class FakeKaggleApi:
 
 def test_parse_competition_slug() -> None:
     assert parse_competition_slug("https://www.kaggle.com/competitions/titanic") == "titanic"
+    assert parse_competition_slug("https://www.kaggle.com/c/titanic") == "titanic"
+    assert parse_competition_slug("titanic") == "titanic"
 
 
 def test_missing_credentials_raise(monkeypatch: pytest.MonkeyPatch) -> None:
