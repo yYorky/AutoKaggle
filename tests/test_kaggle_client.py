@@ -90,3 +90,10 @@ def test_token_credentials_allow_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     client = KaggleClient(api=FakeKaggleApi())
 
     assert client.api.authenticated
+
+
+def test_token_missing_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    monkeypatch.delenv("KAGGLE_API_TOKEN_SECRET", raising=False)
+    with pytest.raises(KaggleCredentialsError, match="KAGGLE_API_TOKEN_SECRET"):
+        KaggleClient(api=FakeKaggleApi())
