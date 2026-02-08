@@ -5,13 +5,13 @@ from __future__ import annotations
 import csv
 import json
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from autokaggle.chat_manager import ChatDecision
 from autokaggle.config import get_llm_model_name
+from autokaggle.llm_utils import GenAIModel, extract_json, extract_text
 from autokaggle.pipeline_templates import (
     render_data_loading,
     render_predict,
@@ -25,17 +25,6 @@ from autokaggle.pipeline_templates import (
 class CodegenModel(Protocol):
     def generate_content(self, prompt: str) -> Any:  # pragma: no cover - protocol definition
         """Generate content for the given prompt."""
-
-
-class _GenAIModel:
-    def __init__(self, api_key: str, model_name: str) -> None:
-        from google import genai
-
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-
-    def generate_content(self, prompt: str) -> Any:
-        return self._client.models.generate_content(model=self._model_name, contents=prompt)
 
 
 @dataclass(frozen=True)
@@ -94,8 +83,8 @@ def _render_pipeline_with_llm(
     prompt = _build_codegen_prompt(run_path, profile, decision)
     model = _build_codegen_model()
     response = model.generate_content(prompt)
-    response_text = _extract_text(response)
-    payload = _extract_json(response_text)
+    response_text = extract_text(response)
+    payload = extract_json(response_text)
 
     files = payload.get("files", {})
     if not isinstance(files, dict):
@@ -131,7 +120,7 @@ def _build_codegen_model() -> CodegenModel:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Set GOOGLE_API_KEY to run LLM code generation.")
-    return _GenAIModel(api_key=api_key, model_name=get_llm_model_name())
+    return GenAIModel(api_key=api_key, model_name=get_llm_model_name())
 
 
 def _build_codegen_prompt(
@@ -218,26 +207,6 @@ def _load_sample_submission_preview(
                 break
             rows.append(row)
     return {"columns": header, "rows": rows}
-
-
-def _extract_text(response: Any) -> str:
-    if hasattr(response, "text") and response.text:
-        return str(response.text)
-    if hasattr(response, "candidates") and response.candidates:
-        candidate = response.candidates[0]
-        if hasattr(candidate, "content") and candidate.content and candidate.content.parts:
-            return str(candidate.content.parts[0].text)
-    raise ValueError("Unable to extract text from LLM response.")
-
-
-def _extract_json(response_text: str) -> dict[str, Any]:
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if not match:
-            raise ValueError("LLM response did not contain JSON.")
-        return json.loads(match.group(0))
 
 
 def _format_requirements(requirements: list[str]) -> str:
