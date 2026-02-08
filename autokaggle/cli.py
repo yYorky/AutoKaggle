@@ -123,24 +123,38 @@ def _handle_failed_execution(
     decision: ChatDecision,
     error: PipelineExecutionError,
 ) -> None:
+    max_retries = _get_max_codegen_retries()
     log_path = failed_run_path / "logs" / "run.log"
     log_excerpt = _tail_file(log_path, lines=200) if log_path.exists() else ""
     failure_context = CodegenFailureContext(
         failed_script=error.script,
         run_log=log_excerpt,
     )
-    retry_run_path = store.create_run(competition_url)
-    _copy_run_inputs(failed_run_path, retry_run_path)
-    write_profile(profile, retry_run_path / "input" / "data_profile.json")
-    write_chat_decisions(retry_run_path, decision)
-    store.update_status(retry_run_path.name, "retrying_codegen")
-    assets = generate_pipeline(retry_run_path, profile, decision, failure_context)
-    store.update_status(retry_run_path.name, "code_generated")
-    try:
-        run_pipeline(retry_run_path, assets.requirements_path)
-        store.update_status(retry_run_path.name, "executed")
-    except PipelineExecutionError:
-        store.update_status(retry_run_path.name, "execution_failed")
+    previous_attempts: list[dict[str, str]] = []
+    for attempt in range(1, max_retries + 1):
+        retry_run_path = store.create_run(competition_url)
+        _copy_run_inputs(failed_run_path, retry_run_path)
+        write_profile(profile, retry_run_path / "input" / "data_profile.json")
+        write_chat_decisions(retry_run_path, decision)
+        store.update_status(retry_run_path.name, "retrying_codegen")
+        assets = generate_pipeline(retry_run_path, profile, decision, failure_context)
+        store.update_status(retry_run_path.name, "code_generated")
+        try:
+            run_pipeline(retry_run_path, assets.requirements_path)
+            store.update_status(retry_run_path.name, "executed")
+            return
+        except PipelineExecutionError as exc:
+            store.update_status(retry_run_path.name, "execution_failed")
+            retry_log_path = retry_run_path / "logs" / "run.log"
+            retry_excerpt = _tail_file(retry_log_path, lines=200) if retry_log_path.exists() else ""
+            previous_attempts.append(
+                {"failed_script": failure_context.failed_script, "run_log": failure_context.run_log}
+            )
+            failure_context = CodegenFailureContext(
+                failed_script=exc.script,
+                run_log=retry_excerpt,
+                previous_attempts=list(previous_attempts),
+            )
 
 
 def _copy_run_inputs(source_run_path: Path, destination_run_path: Path) -> None:
@@ -149,6 +163,15 @@ def _copy_run_inputs(source_run_path: Path, destination_run_path: Path) -> None:
     if not source_input.exists():
         return
     shutil.copytree(source_input, destination_input, dirs_exist_ok=True)
+
+
+def _get_max_codegen_retries() -> int:
+    raw_value = os.getenv("AUTOKAGGLE_MAX_CODEGEN_RETRIES", "3")
+    try:
+        max_retries = int(raw_value)
+    except ValueError:
+        return 3
+    return max(1, max_retries)
 
 
 def build_parser() -> argparse.ArgumentParser:

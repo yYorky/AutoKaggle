@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -36,6 +36,7 @@ class PipelineAssets:
 class CodegenFailureContext:
     failed_script: str
     run_log: str
+    previous_attempts: list[dict[str, str]] = field(default_factory=list)
 
 
 def generate_pipeline(
@@ -157,11 +158,16 @@ def _build_codegen_prompt(
         "- Read CSVs from run_root / 'input' rather than assuming the working directory.\n"
         "- Use the data profile + sample submission to infer targets and submission schema.\n"
         "- Respect competition rules/metric hints in competition metadata.\n"
-        "- data_loading.py: load_training_data, load_test_data, load_sample_submission.\n"
-        "- preprocess.py: load_profile, build_preprocessor(profile) returning ColumnTransformer.\n"
-        "- train.py: train() trains three models (CatBoost, LightGBM, XGBoost) and writes model_*.joblib in output/.\n"
-        "- train.py: use the hyperparameters from the chat decisions for each model family.\n"
-        "- predict.py: predict() writes submission.csv matching sample submission columns/order.\n"
+        "- data_loading.py: define load_training_data, load_test_data, load_sample_submission helpers.\n"
+        "- data_loading.py: return pandas DataFrames, preserve column names, and avoid side effects.\n"
+        "- preprocess.py: define load_profile() that reads data_profile.json.\n"
+        "- preprocess.py: define build_preprocessor(profile) returning a ColumnTransformer for numeric/categorical features.\n"
+        "- preprocess.py: handle missing columns by intersecting requested columns with available columns and log warnings.\n"
+        "- train.py: define train() that trains CatBoost, LightGBM, XGBoost and writes model_*.joblib in output/.\n"
+        "- train.py: use hyperparameters from the chat decisions for each model family and include safe defaults.\n"
+        "- train.py: ensure targets are aligned with features after preprocessing and handle train/valid split if needed.\n"
+        "- predict.py: define predict() that loads models, transforms features, and writes submission.csv.\n"
+        "- predict.py: output columns/order must match sample submission exactly.\n"
         "- predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.\n"
         "- When encoding classification targets, handle missing/unmapped labels safely (avoid astype(int) on NaN). Use factorize or "
         "Categorical and drop or impute invalid labels with clear logging.\n"
@@ -169,6 +175,8 @@ def _build_codegen_prompt(
         "- If you reference Path or other standard-library types, import them explicitly (e.g., from pathlib import Path).\n"
         "- Ensure there are no undefined names; every symbol used in a script must be imported or defined in that file.\n"
         "- Ensure to import the neccessary packages in each script.\n"
+        "- Avoid relying on global state; each script should be runnable independently when invoked.\n"
+        "- Add defensive checks (e.g., missing files, empty DataFrames) with clear error messages.\n"
         "- Pin or bound dependency versions to the APIs you use (e.g., pandas>=2.0,<3, scikit-learn>=1.3,<2).\n"
         "- Ensure the requirements include every imported package (including transitive direct imports like numpy, joblib).\n"
         "- Avoid deprecated APIs unless the version constraints explicitly allow them.\n"
@@ -186,11 +194,19 @@ def _build_codegen_prompt(
         f"{sample_json}\n\n"
     )
     if failure_context is not None:
+        attempts = [
+            *failure_context.previous_attempts,
+            {"failed_script": failure_context.failed_script, "run_log": failure_context.run_log},
+        ]
         prompt += (
             "Failed run context (use this to fix the error and regenerate the scripts):\n"
-            f"Failed script: {failure_context.failed_script}\n"
-            f"Run log excerpt:\n{failure_context.run_log}\n\n"
         )
+        for idx, attempt in enumerate(attempts, start=1):
+            prompt += (
+                f"Attempt {idx}:\n"
+                f"Failed script: {attempt['failed_script']}\n"
+                f"Run log excerpt:\n{attempt['run_log']}\n\n"
+            )
     prompt += (
         "Return JSON with structure:\n"
         "{\n"
