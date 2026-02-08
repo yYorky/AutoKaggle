@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import zipfile
+import os
 from pathlib import Path
 
 import pytest
@@ -95,6 +96,28 @@ def test_token_credentials_allow_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     client = KaggleClient(api=FakeKaggleApi())
 
     assert client.api.authenticated
+
+
+def test_token_sets_username_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "user:key")
+    monkeypatch.delenv("KAGGLE_USERNAME", raising=False)
+    monkeypatch.delenv("KAGGLE_KEY", raising=False)
+
+    KaggleClient(api=FakeKaggleApi())
+
+    assert os.getenv("KAGGLE_USERNAME") == "user"
+    assert os.getenv("KAGGLE_KEY") == "key"
+
+
+def test_json_token_sets_username_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KAGGLE_API_TOKEN", '{"username":"user","key":"key"}')
+    monkeypatch.delenv("KAGGLE_USERNAME", raising=False)
+    monkeypatch.delenv("KAGGLE_KEY", raising=False)
+
+    KaggleClient(api=FakeKaggleApi())
+
+    assert os.getenv("KAGGLE_USERNAME") == "user"
+    assert os.getenv("KAGGLE_KEY") == "key"
 
 
 def test_token_missing_raises(monkeypatch: pytest.MonkeyPatch) -> None:

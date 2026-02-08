@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import zipfile
 from pathlib import Path
@@ -32,10 +33,43 @@ def parse_competition_slug(competition_url: str) -> str:
     raise ValueError(f"Unable to parse competition slug from URL: {competition_url}")
 
 
+def _parse_kaggle_api_token(token: str) -> tuple[str, str] | None:
+    token = token.strip()
+    if not token:
+        return None
+    if token.startswith("{"):
+        try:
+            payload = json.loads(token)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(payload, dict):
+            username = payload.get("username")
+            key = payload.get("key")
+            if username and key:
+                return str(username), str(key)
+        return None
+    if ":" in token:
+        username, key = token.split(":", 1)
+        if username and key:
+            return username, key
+    return None
+
+
 def _ensure_credentials() -> None:
-    if os.getenv("KAGGLE_API_TOKEN"):
+    if os.getenv("KAGGLE_USERNAME") and os.getenv("KAGGLE_KEY"):
         return
-    raise KaggleCredentialsError("Set KAGGLE_API_TOKEN to download competition data.")
+    token = os.getenv("KAGGLE_API_TOKEN")
+    if not token:
+        raise KaggleCredentialsError(
+            "Set KAGGLE_API_TOKEN to download competition data (format: username:key or JSON)."
+        )
+    parsed = _parse_kaggle_api_token(token)
+    if not parsed:
+        raise KaggleCredentialsError(
+            "KAGGLE_API_TOKEN is invalid. Expected username:key or JSON with username/key."
+        )
+    os.environ.setdefault("KAGGLE_USERNAME", parsed[0])
+    os.environ.setdefault("KAGGLE_KEY", parsed[1])
 
 
 class KaggleClient:
