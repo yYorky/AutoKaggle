@@ -37,17 +37,6 @@ def _parse_kaggle_api_token(token: str) -> tuple[str, str] | None:
     token = token.strip()
     if not token:
         return None
-    if token.startswith("{"):
-        try:
-            payload = json.loads(token)
-        except json.JSONDecodeError:
-            return None
-        if isinstance(payload, dict):
-            username = payload.get("username")
-            key = payload.get("key")
-            if username and key:
-                return str(username), str(key)
-        return None
     if ":" in token:
         username, key = token.split(":", 1)
         if username and key:
@@ -61,15 +50,42 @@ def _ensure_credentials() -> None:
     token = os.getenv("KAGGLE_API_TOKEN")
     if not token:
         raise KaggleCredentialsError(
-            "Set KAGGLE_API_TOKEN to download competition data (format: username:key or JSON)."
+            "Set KAGGLE_API_TOKEN to download competition data."
+        )
+    token = token.strip()
+    if not token:
+        raise KaggleCredentialsError("KAGGLE_API_TOKEN is empty.")
+    if token.startswith("{"):
+        try:
+            payload = json.loads(token)
+        except json.JSONDecodeError as exc:
+            raise KaggleCredentialsError(
+                "KAGGLE_API_TOKEN looks like JSON but could not be parsed."
+            ) from exc
+        if isinstance(payload, dict):
+            username = payload.get("username")
+            key = payload.get("key")
+            if username and key:
+                os.environ.setdefault("KAGGLE_USERNAME", str(username))
+                os.environ.setdefault("KAGGLE_KEY", str(key))
+                return
+        raise KaggleCredentialsError(
+            "KAGGLE_API_TOKEN JSON must include username and key fields."
         )
     parsed = _parse_kaggle_api_token(token)
-    if not parsed:
-        raise KaggleCredentialsError(
-            "KAGGLE_API_TOKEN is invalid. Expected username:key or JSON with username/key."
-        )
-    os.environ.setdefault("KAGGLE_USERNAME", parsed[0])
-    os.environ.setdefault("KAGGLE_KEY", parsed[1])
+    if parsed:
+        os.environ.setdefault("KAGGLE_USERNAME", parsed[0])
+        os.environ.setdefault("KAGGLE_KEY", parsed[1])
+        return
+    _write_access_token_file(token)
+
+
+def _write_access_token_file(token: str) -> None:
+    kaggle_dir = Path.home() / ".kaggle"
+    kaggle_dir.mkdir(parents=True, exist_ok=True)
+    token_path = kaggle_dir / "access_token"
+    token_path.write_text(token)
+    os.chmod(token_path, 0o600)
 
 
 class KaggleClient:
