@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
 from autokaggle.config import get_llm_model_name
+from autokaggle.llm_utils import GenAIModel, extract_json, extract_text
 
 
 class ChatModel(Protocol):
@@ -24,6 +24,9 @@ class ChatDecision:
     features: list[str]
     constraints: list[str]
     evaluation_metric: str
+    lightgbm_params: dict[str, Any]
+    xgboost_params: dict[str, Any]
+    catboost_params: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -31,6 +34,9 @@ class ChatDecision:
             "features": self.features,
             "constraints": self.constraints,
             "evaluation_metric": self.evaluation_metric,
+            "lightgbm_params": self.lightgbm_params,
+            "xgboost_params": self.xgboost_params,
+            "catboost_params": self.catboost_params,
         }
 
 
@@ -40,6 +46,9 @@ def default_chat_decision(evaluation_metric: str | None = None) -> ChatDecision:
         features=["baseline preprocessing"],
         constraints=["fast baseline"],
         evaluation_metric=evaluation_metric or "accuracy",
+        lightgbm_params={"n_estimators": 300},
+        xgboost_params={"n_estimators": 300, "tree_method": "hist"},
+        catboost_params={"iterations": 300, "verbose": False},
     )
 
 
@@ -94,6 +103,9 @@ def build_prompt(
         "- features: list of feature engineering ideas including their formula\n"
         "- constraints: list of constraints or assumptions\n\n"
         "- evaluation_metric: use the competition evaluation metric name\n\n"
+        "- lightgbm_params: object of recommended LightGBM hyperparameters\n"
+        "- xgboost_params: object of recommended XGBoost hyperparameters\n"
+        "- catboost_params: object of recommended CatBoost hyperparameters\n\n"
         "Use the competition page excerpt to confirm the evaluation metric and rules.\n\n"
         "Return ONLY valid JSON."
     )
@@ -101,17 +113,24 @@ def build_prompt(
 
 def parse_decisions(response_text: str, competition: dict[str, Any] | None = None) -> ChatDecision:
     """Parse the model response into a ChatDecision."""
-    payload = _extract_json(response_text)
+    payload = extract_json(response_text)
     default_metric = _resolve_evaluation_metric(competition)
     model_family = str(payload.get("model_family", "lightgbm"))
     features = _ensure_list(payload.get("features"), fallback=["baseline preprocessing"])
     constraints = _ensure_list(payload.get("constraints"), fallback=["fast baseline"])
     evaluation_metric = _ensure_string(payload.get("evaluation_metric"), fallback=default_metric)
+    default_params = default_chat_decision(default_metric)
+    lightgbm_params = _ensure_dict(payload.get("lightgbm_params"), fallback=default_params.lightgbm_params)
+    xgboost_params = _ensure_dict(payload.get("xgboost_params"), fallback=default_params.xgboost_params)
+    catboost_params = _ensure_dict(payload.get("catboost_params"), fallback=default_params.catboost_params)
     return ChatDecision(
         model_family=model_family,
         features=features,
         constraints=constraints,
         evaluation_metric=evaluation_metric,
+        lightgbm_params=lightgbm_params,
+        xgboost_params=xgboost_params,
+        catboost_params=catboost_params,
     )
 
 
@@ -119,45 +138,14 @@ def _generate_response(prompt: str, model: ChatModel | None) -> str:
     if model is None:
         model = _build_default_model()
     response = model.generate_content(prompt)
-    return _extract_text(response)
-
-
-class _GenAIModel:
-    def __init__(self, api_key: str, model_name: str) -> None:
-        from google import genai
-
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-
-    def generate_content(self, prompt: str) -> Any:
-        return self._client.models.generate_content(model=self._model_name, contents=prompt)
+    return extract_text(response)
 
 
 def _build_default_model() -> ChatModel:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Set GOOGLE_API_KEY to run the chat-guided strategy step.")
-    return _GenAIModel(api_key=api_key, model_name=get_llm_model_name())
-
-
-def _extract_text(response: Any) -> str:
-    if hasattr(response, "text") and response.text:
-        return str(response.text)
-    if hasattr(response, "candidates") and response.candidates:
-        candidate = response.candidates[0]
-        if hasattr(candidate, "content") and candidate.content and candidate.content.parts:
-            return str(candidate.content.parts[0].text)
-    raise ValueError("Unable to extract text from Gemini response.")
-
-
-def _extract_json(response_text: str) -> dict[str, Any]:
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if not match:
-            raise ValueError("Gemini response did not contain JSON.")
-        return json.loads(match.group(0))
+    return GenAIModel(api_key=api_key, model_name=get_llm_model_name())
 
 
 def _ensure_list(value: Any, fallback: list[str]) -> list[str]:
@@ -172,6 +160,12 @@ def _ensure_string(value: Any, fallback: str) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return fallback
+
+
+def _ensure_dict(value: Any, fallback: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(value, dict) and value:
+        return {str(key): value[key] for key in value}
+    return dict(fallback)
 
 
 def _resolve_evaluation_metric(competition: dict[str, Any] | None) -> str:

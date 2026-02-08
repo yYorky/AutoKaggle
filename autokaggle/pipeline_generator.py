@@ -5,20 +5,19 @@ from __future__ import annotations
 import csv
 import json
 import os
-import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
 from autokaggle.chat_manager import ChatDecision
 from autokaggle.config import get_llm_model_name
+from autokaggle.llm_utils import GenAIModel, extract_json, extract_text
 from autokaggle.pipeline_templates import (
     render_data_loading,
     render_predict,
     render_preprocess,
     render_requirements,
     render_train,
-    render_validate,
 )
 
 
@@ -27,27 +26,24 @@ class CodegenModel(Protocol):
         """Generate content for the given prompt."""
 
 
-class _GenAIModel:
-    def __init__(self, api_key: str, model_name: str) -> None:
-        from google import genai
-
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-
-    def generate_content(self, prompt: str) -> Any:
-        return self._client.models.generate_content(model=self._model_name, contents=prompt)
-
-
 @dataclass(frozen=True)
 class PipelineAssets:
     code_files: list[Path]
     requirements_path: Path
 
 
+@dataclass(frozen=True)
+class CodegenFailureContext:
+    failed_script: str
+    run_log: str
+    previous_attempts: list[dict[str, str]] = field(default_factory=list)
+
+
 def generate_pipeline(
     run_path: Path,
     profile: dict[str, Any],
     decision: ChatDecision,
+    failure_context: CodegenFailureContext | None = None,
 ) -> PipelineAssets:
     code_dir = run_path / "code"
     env_dir = run_path / "env"
@@ -58,7 +54,7 @@ def generate_pipeline(
     strategy_path.write_text(_render_strategy(decision))
 
     if os.getenv("GOOGLE_API_KEY"):
-        files, llm_requirements = _render_pipeline_with_llm(run_path, profile, decision)
+        files, llm_requirements = _render_pipeline_with_llm(run_path, profile, decision, failure_context)
     else:
         files, llm_requirements = _render_pipeline_locally(profile, decision)
 
@@ -77,12 +73,18 @@ def generate_pipeline(
 def _render_strategy(decision: ChatDecision) -> str:
     features = json.dumps(decision.features, indent=2)
     constraints = json.dumps(decision.constraints, indent=2)
+    lightgbm_params = json.dumps(decision.lightgbm_params, indent=2)
+    xgboost_params = json.dumps(decision.xgboost_params, indent=2)
+    catboost_params = json.dumps(decision.catboost_params, indent=2)
     return (
         '"""Strategy decisions from the chat-guided step."""\n\n'
         f"MODEL_FAMILY = {decision.model_family!r}\n\n"
         f"EVALUATION_METRIC = {decision.evaluation_metric!r}\n\n"
         f"FEATURE_IDEAS = {features}\n\n"
         f"CONSTRAINTS = {constraints}\n"
+        f"\nLIGHTGBM_PARAMS = {lightgbm_params}\n\n"
+        f"XGBOOST_PARAMS = {xgboost_params}\n\n"
+        f"CATBOOST_PARAMS = {catboost_params}\n"
     )
 
 
@@ -90,17 +92,18 @@ def _render_pipeline_with_llm(
     run_path: Path,
     profile: dict[str, Any],
     decision: ChatDecision,
+    failure_context: CodegenFailureContext | None,
 ) -> tuple[dict[str, str], list[str]]:
-    prompt = _build_codegen_prompt(run_path, profile, decision)
+    prompt = _build_codegen_prompt(run_path, profile, decision, failure_context)
     model = _build_codegen_model()
     response = model.generate_content(prompt)
-    response_text = _extract_text(response)
-    payload = _extract_json(response_text)
+    response_text = extract_text(response)
+    payload = extract_json(response_text)
 
     files = payload.get("files", {})
     if not isinstance(files, dict):
         raise ValueError("LLM codegen response must include a files object.")
-    required_files = {"data_loading.py", "preprocess.py", "train.py", "validate.py", "predict.py"}
+    required_files = {"data_loading.py", "preprocess.py", "train.py", "predict.py"}
     missing = required_files - set(files.keys())
     if missing:
         raise ValueError(f"LLM codegen response missing files: {sorted(missing)}")
@@ -120,7 +123,6 @@ def _render_pipeline_locally(
         "data_loading.py": render_data_loading(profile),
         "preprocess.py": render_preprocess(profile),
         "train.py": render_train(profile),
-        "validate.py": render_validate(profile),
         "predict.py": render_predict(profile),
     }
     requirements = [line for line in render_requirements(decision).splitlines() if line.strip()]
@@ -131,13 +133,14 @@ def _build_codegen_model() -> CodegenModel:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Set GOOGLE_API_KEY to run LLM code generation.")
-    return _GenAIModel(api_key=api_key, model_name=get_llm_model_name())
+    return GenAIModel(api_key=api_key, model_name=get_llm_model_name())
 
 
 def _build_codegen_prompt(
     run_path: Path,
     profile: dict[str, Any],
     decision: ChatDecision,
+    failure_context: CodegenFailureContext | None,
 ) -> str:
     competition_payload = _load_competition_metadata(run_path)
     sample_submission_payload = _load_sample_submission_preview(run_path, profile)
@@ -145,24 +148,35 @@ def _build_codegen_prompt(
     decision_payload = json.dumps(decision.to_dict(), indent=2)
     competition_json = json.dumps(competition_payload or {}, indent=2)
     sample_json = json.dumps(sample_submission_payload or {}, indent=2)
-    return (
+    prompt = (
         "You are an AutoKaggle code generator. Use the inputs to draft baseline scripts.\n"
         "Return ONLY valid JSON with keys: files (object) and requirements (list).\n\n"
-        "Required files: data_loading.py, preprocess.py, train.py, validate.py, predict.py.\n"
+        "Required files: data_loading.py, preprocess.py, train.py, predict.py.\n"
         "Constraints:\n"
         "- The run directory contains subfolders: code/ (this script output), input/ (CSV/data files), output/ (artifacts), env/.\n"
         "- Use Path(__file__).resolve().parents[1] to locate the run root inside generated scripts.\n"
         "- Read CSVs from run_root / 'input' rather than assuming the working directory.\n"
         "- Use the data profile + sample submission to infer targets and submission schema.\n"
         "- Respect competition rules/metric hints in competition metadata.\n"
-        "- data_loading.py: load_training_data, load_test_data, load_sample_submission.\n"
-        "- preprocess.py: load_profile, build_preprocessor(profile) returning ColumnTransformer.\n"
-        "- train.py: train() trains model and writes model.joblib + metrics.json in output/.\n"
-        "- validate.py: validate() calls train() and uses the trained model artifact, printing metrics.\n"
-        "- predict.py: predict() writes submission.csv matching sample submission columns/order.\n"
+        "- data_loading.py: define load_training_data, load_test_data, load_sample_submission helpers.\n"
+        "- data_loading.py: return pandas DataFrames, preserve column names, and avoid side effects.\n"
+        "- preprocess.py: define load_profile() that reads data_profile.json.\n"
+        "- preprocess.py: define build_preprocessor(profile) returning a ColumnTransformer for numeric/categorical features.\n"
+        "- preprocess.py: handle missing columns by intersecting requested columns with available columns and log warnings.\n"
+        "- train.py: define train() that trains CatBoost, LightGBM, XGBoost and writes model_*.joblib in output/.\n"
+        "- train.py: use hyperparameters from the chat decisions for each model family and include safe defaults.\n"
+        "- train.py: ensure targets are aligned with features after preprocessing and handle train/valid split if needed.\n"
+        "- predict.py: define predict() that loads models, transforms features, and writes submission.csv.\n"
+        "- predict.py: output columns/order must match sample submission exactly.\n"
         "- predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.\n"
+        "- When encoding classification targets, handle missing/unmapped labels safely (avoid astype(int) on NaN). Use factorize or "
+        "Categorical and drop or impute invalid labels with clear logging.\n"
         "- Use only Python + the dependencies you list in requirements.\n"
+        "- If you reference Path or other standard-library types, import them explicitly (e.g., from pathlib import Path).\n"
+        "- Ensure there are no undefined names; every symbol used in a script must be imported or defined in that file.\n"
         "- Ensure to import the neccessary packages in each script.\n"
+        "- Avoid relying on global state; each script should be runnable independently when invoked.\n"
+        "- Add defensive checks (e.g., missing files, empty DataFrames) with clear error messages.\n"
         "- Pin or bound dependency versions to the APIs you use (e.g., pandas>=2.0,<3, scikit-learn>=1.3,<2).\n"
         "- Ensure the requirements include every imported package (including transitive direct imports like numpy, joblib).\n"
         "- Avoid deprecated APIs unless the version constraints explicitly allow them.\n"
@@ -178,12 +192,29 @@ def _build_codegen_prompt(
         f"{competition_json}\n\n"
         "Sample submission preview (JSON):\n"
         f"{sample_json}\n\n"
+    )
+    if failure_context is not None:
+        attempts = [
+            *failure_context.previous_attempts,
+            {"failed_script": failure_context.failed_script, "run_log": failure_context.run_log},
+        ]
+        prompt += (
+            "Failed run context (use this to fix the error and regenerate the scripts):\n"
+        )
+        for idx, attempt in enumerate(attempts, start=1):
+            prompt += (
+                f"Attempt {idx}:\n"
+                f"Failed script: {attempt['failed_script']}\n"
+                f"Run log excerpt:\n{attempt['run_log']}\n\n"
+            )
+    prompt += (
         "Return JSON with structure:\n"
         "{\n"
         '  "requirements": ["pandas>=...", "..."],\n'
-        '  "files": {"data_loading.py": "...", "preprocess.py": "...", "train.py": "...", "validate.py": "...", "predict.py": "..."}\n'
+        '  "files": {"data_loading.py": "...", "preprocess.py": "...", "train.py": "...", "predict.py": "..."}\n'
         "}\n"
     )
+    return prompt
 
 
 def _load_competition_metadata(run_path: Path) -> dict[str, Any] | None:
@@ -218,26 +249,6 @@ def _load_sample_submission_preview(
                 break
             rows.append(row)
     return {"columns": header, "rows": rows}
-
-
-def _extract_text(response: Any) -> str:
-    if hasattr(response, "text") and response.text:
-        return str(response.text)
-    if hasattr(response, "candidates") and response.candidates:
-        candidate = response.candidates[0]
-        if hasattr(candidate, "content") and candidate.content and candidate.content.parts:
-            return str(candidate.content.parts[0].text)
-    raise ValueError("Unable to extract text from LLM response.")
-
-
-def _extract_json(response_text: str) -> dict[str, Any]:
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if not match:
-            raise ValueError("LLM response did not contain JSON.")
-        return json.loads(match.group(0))
 
 
 def _format_requirements(requirements: list[str]) -> str:

@@ -144,12 +144,12 @@ runs/
 # 1) Authenticate with Kaggle (once)
 Create a `.env` file in the repo root (copy from `.env.example`) and fill in:
 
-KAGGLE_API_TOKEN=username:key  # or JSON from kaggle.json
+KAGGLE_API_TOKEN=your_token
 GOOGLE_API_KEY=your_google_api_key
 AUTOKAGGLE_MODEL=gemini-3-flash-preview
 
 Alternatively, export it in your shell:
-export KAGGLE_API_TOKEN=username:key  # or JSON from kaggle.json
+export KAGGLE_API_TOKEN=your_token
 export GOOGLE_API_KEY=your_google_api_key
 export AUTOKAGGLE_MODEL=gemini-3-flash-preview
 
@@ -191,7 +191,7 @@ environment (or in a local `.env` file) and then start a run. The CLI will downl
 extract the competition data into the run's `input/` directory.
 
 ```
-KAGGLE_API_TOKEN=username:key  # or JSON from kaggle.json
+KAGGLE_API_TOKEN=your_token
 
 python -m autokaggle run https://www.kaggle.com/competitions/{competition}
 ```
@@ -211,7 +211,7 @@ inside `input/`, stores relative file paths (so nested datasets work), and prefe
 Kaggle:
 
 ```
-KAGGLE_API_TOKEN=username:key  # or JSON from kaggle.json
+KAGGLE_API_TOKEN=your_token
 
 python -m autokaggle run https://www.kaggle.com/competitions/{competition}
 ```
@@ -251,7 +251,7 @@ Kaggle data downloaded and either enable chat or allow the default strategy deci
 to be used:
 
 ```
-KAGGLE_API_TOKEN=username:key  # or JSON from kaggle.json
+KAGGLE_API_TOKEN=your_token
 GOOGLE_API_KEY=your_google_api_key
 
 python -m autokaggle run https://www.kaggle.com/competitions/{competition}
@@ -283,7 +283,7 @@ The generated loaders attempt to resolve `train.csv`, `test.csv`, and
 recursively under `input/` if the expected filenames are missing.
 
 ```
-KAGGLE_API_TOKEN=username:key  # or JSON from kaggle.json
+KAGGLE_API_TOKEN=your_token
 GOOGLE_API_KEY=your_google_api_key
 
 python -m autokaggle run https://www.kaggle.com/competitions/{competition}
@@ -295,17 +295,3 @@ python -m autokaggle run https://www.kaggle.com/competitions/{competition}
 # Run the full test suite
 pytest -q
 ```
-
-## Next steps
-
-- Build a minimal CLI to process a Kaggle URL.
-- Implement Kaggle API download + profiler for monthly competitions.
-- Add chat loop to capture LLM + user decisions before code generation.
-- Implement a baseline tabular template generator.
-- Add a local runner that creates `submission.csv`.
-
-## Discussion prompts
-
-- Which chat output format should we treat as best practice for v1 (markdown transcript, structured JSON, or both)?
-- Should we add optional manual dataset upload in a later phase, or keep Kaggle API-only longer?
-- Baseline model priority: LightGBM.
