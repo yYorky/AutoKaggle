@@ -162,6 +162,7 @@ def _build_codegen_prompt(
         "- predict.py: predict() writes submission.csv matching sample submission columns/order.\n"
         "- predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.\n"
         "- Use only Python + the dependencies you list in requirements.\n"
+        "- Ensure all required dependencies are imported in the scripts\n"
         "- Do not include Markdown fences.\n\n"
         "Chat decisions (JSON):\n"
         f"{decision_payload}\n\n"
