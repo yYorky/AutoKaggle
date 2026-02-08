@@ -162,6 +162,7 @@ def _build_codegen_prompt(
         "- predict.py: predict() writes submission.csv matching sample submission columns/order.\n"
         "- predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.\n"
         "- Use only Python + the dependencies you list in requirements.\n"
+        "- Ensure to import the neccessary packages in each script.\n"
         "- Pin or bound dependency versions to the APIs you use (e.g., pandas>=2.0,<3, scikit-learn>=1.3,<2).\n"
         "- Ensure the requirements include every imported package (including transitive direct imports like numpy, joblib).\n"
         "- Avoid deprecated APIs unless the version constraints explicitly allow them.\n"
