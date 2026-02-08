@@ -77,15 +77,13 @@ def _ensure_credentials() -> None:
         os.environ.setdefault("KAGGLE_USERNAME", parsed[0])
         os.environ.setdefault("KAGGLE_KEY", parsed[1])
         return
-    _write_access_token_file(token)
-
-
-def _write_access_token_file(token: str) -> None:
-    kaggle_dir = Path.home() / ".kaggle"
-    kaggle_dir.mkdir(parents=True, exist_ok=True)
-    token_path = kaggle_dir / "access_token"
-    token_path.write_text(token)
-    os.chmod(token_path, 0o600)
+    if os.getenv("KAGGLE_USERNAME") and not os.getenv("KAGGLE_KEY"):
+        os.environ.setdefault("KAGGLE_KEY", token)
+        return
+    raise KaggleCredentialsError(
+        "KAGGLE_API_TOKEN must be JSON from kaggle.json, in username:key format, "
+        "or paired with KAGGLE_USERNAME."
+    )
 
 
 class KaggleClient:
