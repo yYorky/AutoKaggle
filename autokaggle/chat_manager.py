@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
 from autokaggle.config import get_llm_model_name
+from autokaggle.llm_utils import GenAIModel, extract_json, extract_text
 
 
 class ChatModel(Protocol):
@@ -101,7 +101,7 @@ def build_prompt(
 
 def parse_decisions(response_text: str, competition: dict[str, Any] | None = None) -> ChatDecision:
     """Parse the model response into a ChatDecision."""
-    payload = _extract_json(response_text)
+    payload = extract_json(response_text)
     default_metric = _resolve_evaluation_metric(competition)
     model_family = str(payload.get("model_family", "lightgbm"))
     features = _ensure_list(payload.get("features"), fallback=["baseline preprocessing"])
@@ -119,45 +119,14 @@ def _generate_response(prompt: str, model: ChatModel | None) -> str:
     if model is None:
         model = _build_default_model()
     response = model.generate_content(prompt)
-    return _extract_text(response)
-
-
-class _GenAIModel:
-    def __init__(self, api_key: str, model_name: str) -> None:
-        from google import genai
-
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-
-    def generate_content(self, prompt: str) -> Any:
-        return self._client.models.generate_content(model=self._model_name, contents=prompt)
+    return extract_text(response)
 
 
 def _build_default_model() -> ChatModel:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Set GOOGLE_API_KEY to run the chat-guided strategy step.")
-    return _GenAIModel(api_key=api_key, model_name=get_llm_model_name())
-
-
-def _extract_text(response: Any) -> str:
-    if hasattr(response, "text") and response.text:
-        return str(response.text)
-    if hasattr(response, "candidates") and response.candidates:
-        candidate = response.candidates[0]
-        if hasattr(candidate, "content") and candidate.content and candidate.content.parts:
-            return str(candidate.content.parts[0].text)
-    raise ValueError("Unable to extract text from Gemini response.")
-
-
-def _extract_json(response_text: str) -> dict[str, Any]:
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if not match:
-            raise ValueError("Gemini response did not contain JSON.")
-        return json.loads(match.group(0))
+    return GenAIModel(api_key=api_key, model_name=get_llm_model_name())
 
 
 def _ensure_list(value: Any, fallback: list[str]) -> list[str]:
