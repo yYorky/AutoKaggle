@@ -62,7 +62,7 @@ def test_missing_credentials_raise(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_download_competition_data_extracts_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "user:key")
     client = KaggleClient(api=FakeKaggleApi())
 
     extracted = client.download_competition_data(
@@ -78,7 +78,7 @@ def test_download_competition_data_extracts_files(tmp_path: Path, monkeypatch: p
 def test_ensure_sample_submission_downloads_if_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "user:key")
     api = FakeKaggleApi()
     client = KaggleClient(api=api)
 
@@ -92,7 +92,7 @@ def test_ensure_sample_submission_downloads_if_missing(
 
 
 def test_token_credentials_allow_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "user:key")
     client = KaggleClient(api=FakeKaggleApi())
 
     assert client.api.authenticated
@@ -120,14 +120,34 @@ def test_json_token_sets_username_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert os.getenv("KAGGLE_KEY") == "key"
 
 
+def test_invalid_token_format_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    monkeypatch.delenv("KAGGLE_USERNAME", raising=False)
+    monkeypatch.delenv("KAGGLE_KEY", raising=False)
+    with pytest.raises(KaggleCredentialsError, match="KAGGLE_USERNAME"):
+        KaggleClient(api=FakeKaggleApi())
+
+
 def test_token_missing_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KAGGLE_API_TOKEN", raising=False)
+    monkeypatch.delenv("KAGGLE_USERNAME", raising=False)
+    monkeypatch.delenv("KAGGLE_KEY", raising=False)
     with pytest.raises(KaggleCredentialsError, match="KAGGLE_API_TOKEN"):
         KaggleClient(api=FakeKaggleApi())
 
 
-def test_fetch_competition_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_key_token_with_username_sets_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KAGGLE_API_TOKEN", "token")
+    monkeypatch.setenv("KAGGLE_USERNAME", "user")
+    monkeypatch.delenv("KAGGLE_KEY", raising=False)
+
+    KaggleClient(api=FakeKaggleApi())
+
+    assert os.getenv("KAGGLE_KEY") == "token"
+
+
+def test_fetch_competition_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KAGGLE_API_TOKEN", "user:key")
     client = KaggleClient(api=FakeKaggleApi())
 
     metadata = client.fetch_competition_metadata("https://www.kaggle.com/competitions/titanic")
