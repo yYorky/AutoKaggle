@@ -8,7 +8,7 @@ AutoKaggle is a CLI tool that scaffolds and runs baseline Kaggle competition pip
 - **Kaggle API integration** to fetch competition metadata and datasets.
 - **Data profiling** to summarize schema, missingness, and target inference.
 - **LLM-assisted strategy + code generation** (Gemini) with a local fallback.
-- **Local execution** that produces `model.joblib`, `metrics.json`, and `submission.csv`.
+- **Local execution** that produces model artifacts and `submission.csv`.
 - **Run metadata + logs** to track progress and artifacts.
 
 ## Requirements
@@ -77,15 +77,16 @@ runs/{run_id}/
     data_loading.py
     preprocess.py
     train.py
-    validate.py
     predict.py
     strategy.py
   env/
     requirements.txt
     venv/
   output/
-    model.joblib
-    metrics.json
+    model_catboost.joblib
+    model_lightgbm.joblib
+    model_xgboost.joblib
+    model_meta.json
     submission.csv
   logs/
     run.log

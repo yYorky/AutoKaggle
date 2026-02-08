@@ -29,6 +29,9 @@ def test_generate_pipeline_writes_assets(tmp_path: Path) -> None:
         features=["target encoding", "missing value imputation"],
         constraints=["fast baseline"],
         evaluation_metric="RMSE",
+        lightgbm_params={"n_estimators": 200},
+        xgboost_params={"n_estimators": 250},
+        catboost_params={"iterations": 250, "verbose": False},
     )
 
     assets = generate_pipeline(run_path, profile, decision)
@@ -38,7 +41,6 @@ def test_generate_pipeline_writes_assets(tmp_path: Path) -> None:
         "data_loading.py",
         "preprocess.py",
         "train.py",
-        "validate.py",
         "predict.py",
     }
     generated_files = {path.name for path in assets.code_files}
@@ -49,3 +51,4 @@ def test_generate_pipeline_writes_assets(tmp_path: Path) -> None:
     assert "MODEL_FAMILY = 'lightgbm'" in strategy_content
     assert "EVALUATION_METRIC = 'RMSE'" in strategy_content
     assert "target encoding" in strategy_content
+    assert "LIGHTGBM_PARAMS" in strategy_content
