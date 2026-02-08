@@ -17,6 +17,15 @@ class ExecutionResult:
     steps: list[str]
 
 
+class PipelineExecutionError(RuntimeError):
+    """Raised when a pipeline script fails during execution."""
+
+    def __init__(self, script: str, error: Exception) -> None:
+        super().__init__(f"{script} failed: {error}")
+        self.script = script
+        self.error = error
+
+
 def run_pipeline(run_path: Path, requirements_path: Path) -> ExecutionResult:
     """Create a venv, install requirements, and run the pipeline scripts."""
     env_dir = run_path / "env"
@@ -62,7 +71,10 @@ def _run_script(python_path: Path, code_dir: Path, script: str, log_path: Path) 
     if not script_path.exists():
         raise FileNotFoundError(f"Script not found: {script_path}")
     _log(log_path, f"Executor: running {script}.")
-    _run_command([str(python_path), str(script_path)], log_path, cwd=code_dir)
+    try:
+        _run_command([str(python_path), str(script_path)], log_path, cwd=code_dir)
+    except RuntimeError as exc:
+        raise PipelineExecutionError(script, exc) from exc
 
 
 def _run_command(command: Iterable[str], log_path: Path, cwd: Path | None = None) -> None:

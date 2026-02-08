@@ -32,10 +32,17 @@ class PipelineAssets:
     requirements_path: Path
 
 
+@dataclass(frozen=True)
+class CodegenFailureContext:
+    failed_script: str
+    run_log: str
+
+
 def generate_pipeline(
     run_path: Path,
     profile: dict[str, Any],
     decision: ChatDecision,
+    failure_context: CodegenFailureContext | None = None,
 ) -> PipelineAssets:
     code_dir = run_path / "code"
     env_dir = run_path / "env"
@@ -46,7 +53,7 @@ def generate_pipeline(
     strategy_path.write_text(_render_strategy(decision))
 
     if os.getenv("GOOGLE_API_KEY"):
-        files, llm_requirements = _render_pipeline_with_llm(run_path, profile, decision)
+        files, llm_requirements = _render_pipeline_with_llm(run_path, profile, decision, failure_context)
     else:
         files, llm_requirements = _render_pipeline_locally(profile, decision)
 
@@ -84,8 +91,9 @@ def _render_pipeline_with_llm(
     run_path: Path,
     profile: dict[str, Any],
     decision: ChatDecision,
+    failure_context: CodegenFailureContext | None,
 ) -> tuple[dict[str, str], list[str]]:
-    prompt = _build_codegen_prompt(run_path, profile, decision)
+    prompt = _build_codegen_prompt(run_path, profile, decision, failure_context)
     model = _build_codegen_model()
     response = model.generate_content(prompt)
     response_text = extract_text(response)
@@ -131,6 +139,7 @@ def _build_codegen_prompt(
     run_path: Path,
     profile: dict[str, Any],
     decision: ChatDecision,
+    failure_context: CodegenFailureContext | None,
 ) -> str:
     competition_payload = _load_competition_metadata(run_path)
     sample_submission_payload = _load_sample_submission_preview(run_path, profile)
@@ -138,7 +147,7 @@ def _build_codegen_prompt(
     decision_payload = json.dumps(decision.to_dict(), indent=2)
     competition_json = json.dumps(competition_payload or {}, indent=2)
     sample_json = json.dumps(sample_submission_payload or {}, indent=2)
-    return (
+    prompt = (
         "You are an AutoKaggle code generator. Use the inputs to draft baseline scripts.\n"
         "Return ONLY valid JSON with keys: files (object) and requirements (list).\n\n"
         "Required files: data_loading.py, preprocess.py, train.py, predict.py.\n"
@@ -157,6 +166,8 @@ def _build_codegen_prompt(
         "- When encoding classification targets, handle missing/unmapped labels safely (avoid astype(int) on NaN). Use factorize or "
         "Categorical and drop or impute invalid labels with clear logging.\n"
         "- Use only Python + the dependencies you list in requirements.\n"
+        "- If you reference Path or other standard-library types, import them explicitly (e.g., from pathlib import Path).\n"
+        "- Ensure there are no undefined names; every symbol used in a script must be imported or defined in that file.\n"
         "- Ensure to import the neccessary packages in each script.\n"
         "- Pin or bound dependency versions to the APIs you use (e.g., pandas>=2.0,<3, scikit-learn>=1.3,<2).\n"
         "- Ensure the requirements include every imported package (including transitive direct imports like numpy, joblib).\n"
@@ -173,12 +184,21 @@ def _build_codegen_prompt(
         f"{competition_json}\n\n"
         "Sample submission preview (JSON):\n"
         f"{sample_json}\n\n"
+    )
+    if failure_context is not None:
+        prompt += (
+            "Failed run context (use this to fix the error and regenerate the scripts):\n"
+            f"Failed script: {failure_context.failed_script}\n"
+            f"Run log excerpt:\n{failure_context.run_log}\n\n"
+        )
+    prompt += (
         "Return JSON with structure:\n"
         "{\n"
         '  "requirements": ["pandas>=...", "..."],\n'
         '  "files": {"data_loading.py": "...", "preprocess.py": "...", "train.py": "...", "predict.py": "..."}\n'
         "}\n"
     )
+    return prompt
 
 
 def _load_competition_metadata(run_path: Path) -> dict[str, Any] | None:

@@ -5,17 +5,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from autokaggle.chat_manager import default_chat_decision, run_chat_strategy, write_chat_decisions
+from autokaggle.chat_manager import ChatDecision, default_chat_decision, run_chat_strategy, write_chat_decisions
 from autokaggle.competition_page import fetch_competition_page_text
 from autokaggle.data_profiler import profile_competition_data, write_profile
-from autokaggle.executor import run_pipeline
+from autokaggle.executor import PipelineExecutionError, run_pipeline
 from autokaggle.kaggle_client import KaggleClient
-from autokaggle.pipeline_generator import generate_pipeline
+from autokaggle.pipeline_generator import CodegenFailureContext, generate_pipeline
 from autokaggle.run_store import RunStore, default_run_root
 
 
@@ -51,8 +52,19 @@ def _handle_run(args: argparse.Namespace) -> int:
         assets = generate_pipeline(run_path, profile, decision)
         store.update_status(run_path.name, "code_generated")
         if not os.getenv("AUTOKAGGLE_SKIP_EXECUTION"):
-            run_pipeline(run_path, assets.requirements_path)
-            store.update_status(run_path.name, "executed")
+            try:
+                run_pipeline(run_path, assets.requirements_path)
+                store.update_status(run_path.name, "executed")
+            except PipelineExecutionError as exc:
+                store.update_status(run_path.name, "execution_failed")
+                _handle_failed_execution(
+                    store,
+                    args.competition_url,
+                    run_path,
+                    profile,
+                    decision,
+                    exc,
+                )
     print(f"Run created: {run_path}")
     return 0
 
@@ -101,6 +113,42 @@ def _tail_file(path: Path, lines: int = 50) -> str:
     if len(content) <= lines:
         return "\n".join(content)
     return "\n".join(content[-lines:])
+
+
+def _handle_failed_execution(
+    store: RunStore,
+    competition_url: str,
+    failed_run_path: Path,
+    profile: dict[str, object],
+    decision: ChatDecision,
+    error: PipelineExecutionError,
+) -> None:
+    log_path = failed_run_path / "logs" / "run.log"
+    log_excerpt = _tail_file(log_path, lines=200) if log_path.exists() else ""
+    failure_context = CodegenFailureContext(
+        failed_script=error.script,
+        run_log=log_excerpt,
+    )
+    retry_run_path = store.create_run(competition_url)
+    _copy_run_inputs(failed_run_path, retry_run_path)
+    write_profile(profile, retry_run_path / "input" / "data_profile.json")
+    write_chat_decisions(retry_run_path, decision)
+    store.update_status(retry_run_path.name, "retrying_codegen")
+    assets = generate_pipeline(retry_run_path, profile, decision, failure_context)
+    store.update_status(retry_run_path.name, "code_generated")
+    try:
+        run_pipeline(retry_run_path, assets.requirements_path)
+        store.update_status(retry_run_path.name, "executed")
+    except PipelineExecutionError:
+        store.update_status(retry_run_path.name, "execution_failed")
+
+
+def _copy_run_inputs(source_run_path: Path, destination_run_path: Path) -> None:
+    source_input = source_run_path / "input"
+    destination_input = destination_run_path / "input"
+    if not source_input.exists():
+        return
+    shutil.copytree(source_input, destination_input, dirs_exist_ok=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
