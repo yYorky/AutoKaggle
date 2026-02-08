@@ -78,6 +78,9 @@ class RunStore:
         self._append_log(self.root / run_id / "logs" / "run.log", f"Status: {status}.")
         return updated
 
+    def append_log(self, run_id: str, message: str) -> None:
+        self._append_log(self.root / run_id / "logs" / "run.log", message)
+
     def _write_metadata(self, path: Path, metadata: RunMetadata) -> None:
         payload = metadata.to_dict()
         validate_run_metadata(payload)

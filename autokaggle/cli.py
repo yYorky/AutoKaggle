@@ -49,8 +49,13 @@ def _handle_run(args: argparse.Namespace) -> int:
         else:
             decision = default_chat_decision(competition_metadata.get("evaluation_metric"))
             write_chat_decisions(run_path, decision)
-        assets = generate_pipeline(run_path, profile, decision)
-        store.update_status(run_path.name, "code_generated")
+        try:
+            assets = generate_pipeline(run_path, profile, decision)
+            store.update_status(run_path.name, "code_generated")
+        except Exception as exc:
+            store.update_status(run_path.name, "codegen_failed")
+            store.append_log(run_path.name, f"Code generation failed: {exc}")
+            raise
         if not os.getenv("AUTOKAGGLE_SKIP_EXECUTION"):
             try:
                 run_pipeline(run_path, assets.requirements_path)

@@ -7,6 +7,9 @@ import re
 from typing import Any
 
 
+_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
 class GenAIModel:
     """Thin wrapper around the Google GenAI client."""
 
@@ -33,10 +36,54 @@ def extract_text(response: Any) -> str:
 
 def extract_json(response_text: str) -> dict[str, Any]:
     """Extract a JSON payload from an LLM response string."""
+    cleaned = _strip_code_fences(response_text)
+    if not cleaned:
+        raise ValueError("LLM response was empty or only whitespace.")
     try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if not match:
-            raise ValueError("LLM response did not contain JSON.")
-        return json.loads(match.group(0))
+        return json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        candidate = _find_json_block(cleaned) or _find_json_block(response_text)
+        if not candidate:
+            raise ValueError("LLM response did not contain JSON.") from exc
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as inner_exc:
+            raise ValueError("LLM response did not contain valid JSON.") from inner_exc
+
+
+def _strip_code_fences(response_text: str) -> str:
+    match = _CODE_FENCE_RE.search(response_text)
+    if match:
+        return match.group(1).strip()
+    return response_text.strip()
+
+
+def _find_json_block(response_text: str) -> str | None:
+    in_string = False
+    escape = False
+    depth = 0
+    start = None
+    for idx, char in enumerate(response_text):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+            continue
+        if char == "}":
+            if depth == 0:
+                continue
+            depth -= 1
+            if depth == 0 and start is not None:
+                return response_text[start : idx + 1]
+    return None
