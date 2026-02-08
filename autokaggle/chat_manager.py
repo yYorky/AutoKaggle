@@ -24,6 +24,9 @@ class ChatDecision:
     features: list[str]
     constraints: list[str]
     evaluation_metric: str
+    lightgbm_params: dict[str, Any]
+    xgboost_params: dict[str, Any]
+    catboost_params: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -31,6 +34,9 @@ class ChatDecision:
             "features": self.features,
             "constraints": self.constraints,
             "evaluation_metric": self.evaluation_metric,
+            "lightgbm_params": self.lightgbm_params,
+            "xgboost_params": self.xgboost_params,
+            "catboost_params": self.catboost_params,
         }
 
 
@@ -40,6 +46,9 @@ def default_chat_decision(evaluation_metric: str | None = None) -> ChatDecision:
         features=["baseline preprocessing"],
         constraints=["fast baseline"],
         evaluation_metric=evaluation_metric or "accuracy",
+        lightgbm_params={"n_estimators": 300},
+        xgboost_params={"n_estimators": 300, "tree_method": "hist"},
+        catboost_params={"iterations": 300, "verbose": False},
     )
 
 
@@ -94,6 +103,9 @@ def build_prompt(
         "- features: list of feature engineering ideas including their formula\n"
         "- constraints: list of constraints or assumptions\n\n"
         "- evaluation_metric: use the competition evaluation metric name\n\n"
+        "- lightgbm_params: object of recommended LightGBM hyperparameters\n"
+        "- xgboost_params: object of recommended XGBoost hyperparameters\n"
+        "- catboost_params: object of recommended CatBoost hyperparameters\n\n"
         "Use the competition page excerpt to confirm the evaluation metric and rules.\n\n"
         "Return ONLY valid JSON."
     )
@@ -107,11 +119,18 @@ def parse_decisions(response_text: str, competition: dict[str, Any] | None = Non
     features = _ensure_list(payload.get("features"), fallback=["baseline preprocessing"])
     constraints = _ensure_list(payload.get("constraints"), fallback=["fast baseline"])
     evaluation_metric = _ensure_string(payload.get("evaluation_metric"), fallback=default_metric)
+    default_params = default_chat_decision(default_metric)
+    lightgbm_params = _ensure_dict(payload.get("lightgbm_params"), fallback=default_params.lightgbm_params)
+    xgboost_params = _ensure_dict(payload.get("xgboost_params"), fallback=default_params.xgboost_params)
+    catboost_params = _ensure_dict(payload.get("catboost_params"), fallback=default_params.catboost_params)
     return ChatDecision(
         model_family=model_family,
         features=features,
         constraints=constraints,
         evaluation_metric=evaluation_metric,
+        lightgbm_params=lightgbm_params,
+        xgboost_params=xgboost_params,
+        catboost_params=catboost_params,
     )
 
 
@@ -141,6 +160,12 @@ def _ensure_string(value: Any, fallback: str) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return fallback
+
+
+def _ensure_dict(value: Any, fallback: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(value, dict) and value:
+        return {str(key): value[key] for key in value}
+    return dict(fallback)
 
 
 def _resolve_evaluation_metric(competition: dict[str, Any] | None) -> str:

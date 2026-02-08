@@ -31,7 +31,7 @@ def run_pipeline(run_path: Path, requirements_path: Path) -> ExecutionResult:
     _install_requirements(pip_path, requirements_path, log_path)
 
     code_dir = run_path / "code"
-    steps = ["train.py", "validate.py", "predict.py"]
+    steps = ["train.py", "predict.py"]
     for script in steps:
         _run_script(python_path, code_dir, script, log_path)
 

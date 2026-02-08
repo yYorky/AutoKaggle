@@ -18,7 +18,6 @@ from autokaggle.pipeline_templates import (
     render_preprocess,
     render_requirements,
     render_train,
-    render_validate,
 )
 
 
@@ -66,12 +65,18 @@ def generate_pipeline(
 def _render_strategy(decision: ChatDecision) -> str:
     features = json.dumps(decision.features, indent=2)
     constraints = json.dumps(decision.constraints, indent=2)
+    lightgbm_params = json.dumps(decision.lightgbm_params, indent=2)
+    xgboost_params = json.dumps(decision.xgboost_params, indent=2)
+    catboost_params = json.dumps(decision.catboost_params, indent=2)
     return (
         '"""Strategy decisions from the chat-guided step."""\n\n'
         f"MODEL_FAMILY = {decision.model_family!r}\n\n"
         f"EVALUATION_METRIC = {decision.evaluation_metric!r}\n\n"
         f"FEATURE_IDEAS = {features}\n\n"
         f"CONSTRAINTS = {constraints}\n"
+        f"\nLIGHTGBM_PARAMS = {lightgbm_params}\n\n"
+        f"XGBOOST_PARAMS = {xgboost_params}\n\n"
+        f"CATBOOST_PARAMS = {catboost_params}\n"
     )
 
 
@@ -89,7 +94,7 @@ def _render_pipeline_with_llm(
     files = payload.get("files", {})
     if not isinstance(files, dict):
         raise ValueError("LLM codegen response must include a files object.")
-    required_files = {"data_loading.py", "preprocess.py", "train.py", "validate.py", "predict.py"}
+    required_files = {"data_loading.py", "preprocess.py", "train.py", "predict.py"}
     missing = required_files - set(files.keys())
     if missing:
         raise ValueError(f"LLM codegen response missing files: {sorted(missing)}")
@@ -109,7 +114,6 @@ def _render_pipeline_locally(
         "data_loading.py": render_data_loading(profile),
         "preprocess.py": render_preprocess(profile),
         "train.py": render_train(profile),
-        "validate.py": render_validate(profile),
         "predict.py": render_predict(profile),
     }
     requirements = [line for line in render_requirements(decision).splitlines() if line.strip()]
@@ -137,7 +141,7 @@ def _build_codegen_prompt(
     return (
         "You are an AutoKaggle code generator. Use the inputs to draft baseline scripts.\n"
         "Return ONLY valid JSON with keys: files (object) and requirements (list).\n\n"
-        "Required files: data_loading.py, preprocess.py, train.py, validate.py, predict.py.\n"
+        "Required files: data_loading.py, preprocess.py, train.py, predict.py.\n"
         "Constraints:\n"
         "- The run directory contains subfolders: code/ (this script output), input/ (CSV/data files), output/ (artifacts), env/.\n"
         "- Use Path(__file__).resolve().parents[1] to locate the run root inside generated scripts.\n"
@@ -146,8 +150,8 @@ def _build_codegen_prompt(
         "- Respect competition rules/metric hints in competition metadata.\n"
         "- data_loading.py: load_training_data, load_test_data, load_sample_submission.\n"
         "- preprocess.py: load_profile, build_preprocessor(profile) returning ColumnTransformer.\n"
-        "- train.py: train() trains model and writes model.joblib + metrics.json in output/.\n"
-        "- validate.py: validate() calls train() and uses the trained model artifact, printing metrics.\n"
+        "- train.py: train() trains three models (CatBoost, LightGBM, XGBoost) and writes model_*.joblib in output/.\n"
+        "- train.py: use the hyperparameters from the chat decisions for each model family.\n"
         "- predict.py: predict() writes submission.csv matching sample submission columns/order.\n"
         "- predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.\n"
         "- Use only Python + the dependencies you list in requirements.\n"
@@ -170,7 +174,7 @@ def _build_codegen_prompt(
         "Return JSON with structure:\n"
         "{\n"
         '  "requirements": ["pandas>=...", "..."],\n'
-        '  "files": {"data_loading.py": "...", "preprocess.py": "...", "train.py": "...", "validate.py": "...", "predict.py": "..."}\n'
+        '  "files": {"data_loading.py": "...", "preprocess.py": "...", "train.py": "...", "predict.py": "..."}\n'
         "}\n"
     )
 

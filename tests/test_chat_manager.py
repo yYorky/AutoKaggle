@@ -36,6 +36,9 @@ def test_run_chat_strategy_persists_outputs(tmp_path: Path) -> None:
             "features": ["imputation", "one-hot encoding"],
             "constraints": ["fast baseline"],
             "evaluation_metric": "RMSE",
+            "lightgbm_params": {"n_estimators": 200},
+            "xgboost_params": {"n_estimators": 250},
+            "catboost_params": {"iterations": 250, "verbose": False},
         }
     )
     model = FakeModel(response_text)
@@ -60,6 +63,7 @@ def test_run_chat_strategy_persists_outputs(tmp_path: Path) -> None:
     assert decisions["model_family"] == "lightgbm"
     assert decisions["features"] == ["imputation", "one-hot encoding"]
     assert decisions["evaluation_metric"] == "RMSE"
+    assert decisions["lightgbm_params"]["n_estimators"] == 200
     assert decision.model_family == "lightgbm"
     assert model.prompts
     assert competition_page_text in model.prompts[0]

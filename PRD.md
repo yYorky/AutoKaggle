@@ -47,15 +47,15 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
 - Include the competition URL page text so the LLM can review rules and evaluation details.
 - Run a guided prompt to propose baseline approach and confirm the evaluation metric.
 - Allow user to accept/edit key choices (model family, features, constraints).
+- Capture LLM-recommended hyperparameters for CatBoost, LightGBM, and XGBoost.
 - Persist transcript and decisions.
 
 ### 5.5 Code generation
 - Generate baseline scripts for:
   - data loading
   - preprocessing
-  - model training
-  - validation
-  - prediction and submission
+  - model training (three model families: CatBoost, LightGBM, XGBoost)
+  - prediction and submission with ensemble voting
 - Write scripts into a run-scoped folder.
 - Loaders should resolve training/test/sample CSVs by name and fall back to the first suitable CSV found recursively.
 - When `AUTOKAGGLE_MODEL` is set, use the configured LLM to generate scripts
@@ -64,12 +64,12 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
 ### 5.6 Local execution
 - Create a virtual environment for each run.
 - Install required dependencies.
-- Execute the pipeline with logging (train/validate/predict).
-- Capture metrics (`metrics.json`), model artifacts, and errors in the run logs.
+- Execute the pipeline with logging (train/predict).
+- Capture model artifacts and errors in the run logs.
 
 ### 5.7 Output artifacts
 - `submission.csv` with the correct schema.
-- `model.joblib` and `metrics.json` stored in `output/`.
+- `model_*.joblib` model artifacts for each model family stored in `output/`.
 - Logs, config, and run metadata stored in the run directory.
 
 ## 6) Non-functional requirements
@@ -148,11 +148,11 @@ AutoKaggle is a CLI-first application that automates Kaggle competition workflow
 ### Phase 6: Local execution
 **Features**
 - Create venv and install dependencies.
-- Run training and prediction scripts.
+- Run training and prediction scripts with ensemble output.
 
 **Tests**
 - `submission.csv` is generated.
-- Logs include training metrics.
+- Logs include successful model training.
 
 ### Phase 7: Polish + docs
 **Features**
