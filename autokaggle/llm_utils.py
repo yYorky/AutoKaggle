@@ -39,16 +39,29 @@ def extract_json(response_text: str) -> dict[str, Any]:
     cleaned = _strip_code_fences(response_text)
     if not cleaned:
         raise ValueError("LLM response was empty or only whitespace.")
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        candidate = _find_json_block(cleaned) or _find_json_block(response_text)
-        if not candidate:
-            raise ValueError("LLM response did not contain JSON.") from exc
+    candidates = []
+    candidate = _find_json_block(cleaned) or _find_json_block(response_text)
+    if candidate:
+        candidates.append(candidate)
+    if cleaned not in candidates:
+        candidates.append(cleaned)
+    last_exc: json.JSONDecodeError | None = None
+    for payload in candidates:
         try:
-            return json.loads(candidate)
-        except json.JSONDecodeError as inner_exc:
-            raise ValueError("LLM response did not contain valid JSON.") from inner_exc
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:
+            last_exc = exc
+    for payload in candidates:
+        repaired = _repair_json_text(payload)
+        if repaired == payload:
+            continue
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError as exc:
+            last_exc = exc
+    if last_exc:
+        raise ValueError("LLM response did not contain valid JSON.") from last_exc
+    raise ValueError("LLM response did not contain JSON.")
 
 
 def _strip_code_fences(response_text: str) -> str:
@@ -87,3 +100,57 @@ def _find_json_block(response_text: str) -> str | None:
             if depth == 0 and start is not None:
                 return response_text[start : idx + 1]
     return None
+
+
+def _repair_json_text(payload: str) -> str:
+    payload = re.sub(r",(\s*[}\]])", r"\1", payload)
+    return _insert_missing_commas_in_arrays(payload)
+
+
+def _insert_missing_commas_in_arrays(payload: str) -> str:
+    result: list[str] = []
+    in_string = False
+    escape = False
+    array_depth = 0
+    last_significant: str | None = None
+
+    for char in payload:
+        if in_string:
+            result.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+                last_significant = '"'
+            continue
+
+        if char.isspace():
+            result.append(char)
+            continue
+
+        if char == '"':
+            if array_depth > 0 and last_significant in ('}', ']', '"'):
+                result.append(",")
+            in_string = True
+            result.append(char)
+            last_significant = char
+            continue
+
+        if char in "{[":
+            if array_depth > 0 and last_significant in ('}', ']', '"'):
+                result.append(",")
+            result.append(char)
+            last_significant = char
+            if char == "[":
+                array_depth += 1
+            continue
+
+        if char == "]":
+            array_depth = max(0, array_depth - 1)
+
+        result.append(char)
+        last_significant = char
+
+    return "".join(result)
