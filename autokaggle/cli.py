@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from autokaggle.chat_manager import ChatDecision, default_chat_decision, run_chat_strategy, write_chat_decisions
 from autokaggle.competition_page import fetch_competition_page_text
+from autokaggle.config import get_bool_setting, get_int_setting, load_config, set_active_config
 from autokaggle.data_profiler import profile_competition_data, write_profile
 from autokaggle.executor import PipelineExecutionError, run_pipeline
 from autokaggle.kaggle_client import KaggleClient
@@ -21,12 +22,12 @@ from autokaggle.run_store import RunStore, default_run_root
 
 
 def _handle_run(args: argparse.Namespace) -> int:
-    load_dotenv(dotenv_path=Path.cwd() / ".env")
+    config = args.config
     run_root = default_run_root()
     run_root.mkdir(parents=True, exist_ok=True)
     store = RunStore(run_root)
     run_path = store.create_run(args.competition_url)
-    if not os.getenv("AUTOKAGGLE_SKIP_DOWNLOAD"):
+    if not get_bool_setting("AUTOKAGGLE_SKIP_DOWNLOAD", "skip_download", config=config):
         client = KaggleClient()
         client.download_competition_data(args.competition_url, run_path / "input")
         client.ensure_sample_submission(args.competition_url, run_path / "input")
@@ -36,7 +37,7 @@ def _handle_run(args: argparse.Namespace) -> int:
         profile = profile_competition_data(run_path / "input")
         write_profile(profile, run_path / "input" / "data_profile.json")
         store.update_status(run_path.name, "profiled")
-        if not os.getenv("AUTOKAGGLE_SKIP_CHAT"):
+        if not get_bool_setting("AUTOKAGGLE_SKIP_CHAT", "skip_chat", config=config):
             competition_page_text = fetch_competition_page_text(args.competition_url)
             decision = run_chat_strategy(
                 run_path,
@@ -56,7 +57,7 @@ def _handle_run(args: argparse.Namespace) -> int:
             store.update_status(run_path.name, "codegen_failed")
             store.append_log(run_path.name, f"Code generation failed: {exc}")
             raise
-        if not os.getenv("AUTOKAGGLE_SKIP_EXECUTION"):
+        if not get_bool_setting("AUTOKAGGLE_SKIP_EXECUTION", "skip_execution", config=config):
             try:
                 run_pipeline(run_path, assets.requirements_path)
                 store.update_status(run_path.name, "executed")
@@ -69,6 +70,7 @@ def _handle_run(args: argparse.Namespace) -> int:
                     profile,
                     decision,
                     exc,
+                    config,
                 )
     print(f"Run created: {run_path}")
     return 0
@@ -127,8 +129,9 @@ def _handle_failed_execution(
     profile: dict[str, object],
     decision: ChatDecision,
     error: PipelineExecutionError,
+    config: dict[str, object],
 ) -> None:
-    max_retries = _get_max_codegen_retries()
+    max_retries = _get_max_codegen_retries(config)
     log_path = failed_run_path / "logs" / "run.log"
     log_excerpt = _tail_file(log_path, lines=200) if log_path.exists() else ""
     failure_context = CodegenFailureContext(
@@ -170,13 +173,14 @@ def _copy_run_inputs(source_run_path: Path, destination_run_path: Path) -> None:
     shutil.copytree(source_input, destination_input, dirs_exist_ok=True)
 
 
-def _get_max_codegen_retries() -> int:
-    raw_value = os.getenv("AUTOKAGGLE_MAX_CODEGEN_RETRIES", "3")
-    try:
-        max_retries = int(raw_value)
-    except ValueError:
-        return 3
-    return max(1, max_retries)
+def _get_max_codegen_retries(config: dict[str, object]) -> int:
+    return get_int_setting(
+        "AUTOKAGGLE_MAX_CODEGEN_RETRIES",
+        "max_codegen_retries",
+        default=3,
+        minimum=1,
+        config=config,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -199,8 +203,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv(dotenv_path=Path.cwd() / ".env")
+    config = load_config()
+    set_active_config(config)
     parser = build_parser()
     args = parser.parse_args(argv)
+    args.config = config
     return args.func(args)
 
 
