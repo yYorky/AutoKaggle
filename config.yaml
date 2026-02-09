@@ -1,0 +1,5 @@
+autokaggle_model: gemini-3-flash-preview
+skip_download: false
+skip_chat: false
+skip_execution: false
+max_codegen_retries: 3

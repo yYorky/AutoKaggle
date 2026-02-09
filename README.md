@@ -28,7 +28,7 @@ AutoKaggle is a CLI-first tool that automates Kaggle competition workflows with 
    ```
 
 4. **Set credentials**
-   AutoKaggle reads environment variables or a local `.env` file.
+   AutoKaggle reads secrets from environment variables or a local `.env` file.
 
    ```bash
    export KAGGLE_API_TOKEN=your_kaggle_token
@@ -107,10 +107,26 @@ runs/
 
 ## Configuration
 
-AutoKaggle uses environment variables (or a `.env` file) to control behavior:
+AutoKaggle reads secrets from environment variables (or a `.env` file) and non-secret runtime
+settings from an optional `config.yaml`. Environment variables always take precedence.
+
+### Secrets (`.env`)
 
 - `KAGGLE_API_TOKEN`: Kaggle API token (required to download competition data).
 - `GOOGLE_API_KEY`: Google GenAI API key (required for chat + LLM codegen).
+
+### Runtime settings (`config.yaml`)
+
+```yaml
+autokaggle_model: gemini-3-flash-preview
+skip_download: false
+skip_chat: false
+skip_execution: false
+max_codegen_retries: 3
+```
+
+You can still configure these via environment variables instead:
+
 - `AUTOKAGGLE_MODEL`: LLM model name (default is configured in code).
 - `AUTOKAGGLE_SKIP_DOWNLOAD=1`: skip downloading competition data (use existing `runs/{run_id}/input` contents).
 - `AUTOKAGGLE_SKIP_CHAT=1`: skip the LLM strategy step and use a default baseline.
