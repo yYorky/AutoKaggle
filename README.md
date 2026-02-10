@@ -10,6 +10,13 @@ AutoKaggle is a CLI-first tool that automates Kaggle competition workflows with 
 - **Why split run orchestration into helper functions?** The run flow now follows explicit stages (`download_data` → `build_decision` → `generate_code` → `execute_and_retry`) to reduce cognitive load and make each stage easier to test in isolation.
 - **Why template prompt constraints as constants?** Centralizing codegen constraints avoids subtle drift when editing prompt policies and makes future prompt updates safer and more consistent.
 - **Why bounded tail reads for logs?** Log tailing now reads files incrementally and keeps only the last N lines in memory, which scales better for long-running jobs with large logs.
+- **Why always write artifacts into a per-run directory tree?** Each run (including retries) gets its own isolated `runs/{run_id}` workspace with `input/code/env/output/logs`, making failures reproducible and preventing cross-run contamination.
+- **Why preserve a local-template fallback when LLM calls are unavailable?** If an API key is missing, AutoKaggle still generates a runnable baseline from local templates so users can progress offline or in restricted environments.
+- **Why infer targets from sample submission first?** Many competitions encode target expectations in `sample_submission.csv`; inferring targets from it (with normalization + fallbacks) reduces wrong-target guesses on unfamiliar datasets.
+- **Why combine Kaggle API metadata with scraped competition-page text?** API metadata provides structured fields, while page text often includes nuanced rules/metric details not exposed cleanly in the API.
+- **Why enforce env-var-over-config precedence?** Environment overrides make CI/CD and ephemeral execution safer by letting operators inject runtime settings/secrets without mutating committed config files.
+- **Why validate run metadata against a schema on read/write?** Early validation catches corrupted or partially written run records before downstream commands (`status`, retries) rely on them.
+- **Why define LLM integrations behind lightweight protocols?** `ChatModel` and `CodegenModel` protocols allow dependency injection in tests, making chat/codegen logic testable without live network calls.
 
 ## Quickstart (clone → run → inspect)
 
