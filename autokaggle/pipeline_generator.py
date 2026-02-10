@@ -21,6 +21,42 @@ from autokaggle.pipeline_templates import (
 )
 
 
+REQUIRED_PIPELINE_FILES = ("data_loading.py", "preprocess.py", "train.py", "predict.py")
+
+CODEGEN_CONSTRAINTS = (
+    "The run directory contains subfolders: code/ (this script output), input/ (CSV/data files), output/ (artifacts), env/.",
+    "Use Path(__file__).resolve().parents[1] to locate the run root inside generated scripts.",
+    "Read CSVs from run_root / 'input' rather than assuming the working directory.",
+    "Use the data profile + sample submission to infer targets and submission schema.",
+    "Respect competition rules/metric hints in competition metadata.",
+    "data_loading.py: define load_training_data, load_test_data, load_sample_submission helpers.",
+    "data_loading.py: return pandas DataFrames, preserve column names, and avoid side effects.",
+    "preprocess.py: define load_profile() that reads data_profile.json.",
+    "preprocess.py: define build_preprocessor(profile) returning a ColumnTransformer for numeric/categorical features.",
+    "preprocess.py: handle missing columns by intersecting requested columns with available columns and log warnings.",
+    "train.py: define train() that trains CatBoost, LightGBM, XGBoost and writes model_*.joblib in output/.",
+    "train.py: use hyperparameters from the chat decisions for each model family and include safe defaults.",
+    "train.py: ensure targets are aligned with features after preprocessing and handle train/valid split if needed.",
+    "predict.py: define predict() that loads models, transforms features, and writes submission.csv.",
+    "predict.py: output columns/order must match sample submission exactly.",
+    "predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.",
+    "When encoding classification targets, handle missing/unmapped labels safely (avoid astype(int) on NaN). Use factorize or Categorical and drop or impute invalid labels with clear logging.",
+    "Use only Python + the dependencies you list in requirements.",
+    "If you reference Path or other standard-library types, import them explicitly (e.g., from pathlib import Path).",
+    "Ensure there are no undefined names; every symbol used in a script must be imported or defined in that file.",
+    "Ensure to import the necessary packages in each script.",
+    "Avoid relying on global state; each script should be runnable independently when invoked.",
+    "Add defensive checks (e.g., missing files, empty DataFrames) with clear error messages.",
+    "Pin or bound dependency versions to the APIs you use (e.g., pandas>=2.0,<3, scikit-learn>=1.3,<2).",
+    "Ensure the requirements include every imported package (including transitive direct imports like numpy, joblib).",
+    "Avoid deprecated APIs unless the version constraints explicitly allow them.",
+    "Prefer stable, commonly available versions and avoid pre-release or nightly builds.",
+    "If you rely on a new API, mention it in the code comments and ensure the requirement lower bound matches it.",
+    "Ensure all required dependencies are imported in the scripts.",
+    "Do not include Markdown fences.",
+)
+
+
 class CodegenModel(Protocol):
     def generate_content(self, prompt: str) -> Any:  # pragma: no cover - protocol definition
         """Generate content for the given prompt."""
@@ -103,8 +139,7 @@ def _render_pipeline_with_llm(
     files = payload.get("files", {})
     if not isinstance(files, dict):
         raise ValueError("LLM codegen response must include a files object.")
-    required_files = {"data_loading.py", "preprocess.py", "train.py", "predict.py"}
-    missing = required_files - set(files.keys())
+    missing = set(REQUIRED_PIPELINE_FILES) - set(files.keys())
     if missing:
         raise ValueError(f"LLM codegen response missing files: {sorted(missing)}")
     requirements = payload.get("requirements", [])
@@ -148,42 +183,14 @@ def _build_codegen_prompt(
     decision_payload = json.dumps(decision.to_dict(), indent=2)
     competition_json = json.dumps(competition_payload or {}, indent=2)
     sample_json = json.dumps(sample_submission_payload or {}, indent=2)
+    required_files = ", ".join(REQUIRED_PIPELINE_FILES)
+    constraint_text = "\n".join(f"- {constraint}" for constraint in CODEGEN_CONSTRAINTS)
     prompt = (
         "You are an AutoKaggle code generator. Use the inputs to draft baseline scripts.\n"
         "Return ONLY valid JSON with keys: files (object) and requirements (list).\n\n"
-        "Required files: data_loading.py, preprocess.py, train.py, predict.py.\n"
+        f"Required files: {required_files}.\n"
         "Constraints:\n"
-        "- The run directory contains subfolders: code/ (this script output), input/ (CSV/data files), output/ (artifacts), env/.\n"
-        "- Use Path(__file__).resolve().parents[1] to locate the run root inside generated scripts.\n"
-        "- Read CSVs from run_root / 'input' rather than assuming the working directory.\n"
-        "- Use the data profile + sample submission to infer targets and submission schema.\n"
-        "- Respect competition rules/metric hints in competition metadata.\n"
-        "- data_loading.py: define load_training_data, load_test_data, load_sample_submission helpers.\n"
-        "- data_loading.py: return pandas DataFrames, preserve column names, and avoid side effects.\n"
-        "- preprocess.py: define load_profile() that reads data_profile.json.\n"
-        "- preprocess.py: define build_preprocessor(profile) returning a ColumnTransformer for numeric/categorical features.\n"
-        "- preprocess.py: handle missing columns by intersecting requested columns with available columns and log warnings.\n"
-        "- train.py: define train() that trains CatBoost, LightGBM, XGBoost and writes model_*.joblib in output/.\n"
-        "- train.py: use hyperparameters from the chat decisions for each model family and include safe defaults.\n"
-        "- train.py: ensure targets are aligned with features after preprocessing and handle train/valid split if needed.\n"
-        "- predict.py: define predict() that loads models, transforms features, and writes submission.csv.\n"
-        "- predict.py: output columns/order must match sample submission exactly.\n"
-        "- predict.py: when the evaluation metric is AUC/ROC-AUC or log loss, prefer predict_proba.\n"
-        "- When encoding classification targets, handle missing/unmapped labels safely (avoid astype(int) on NaN). Use factorize or "
-        "Categorical and drop or impute invalid labels with clear logging.\n"
-        "- Use only Python + the dependencies you list in requirements.\n"
-        "- If you reference Path or other standard-library types, import them explicitly (e.g., from pathlib import Path).\n"
-        "- Ensure there are no undefined names; every symbol used in a script must be imported or defined in that file.\n"
-        "- Ensure to import the neccessary packages in each script.\n"
-        "- Avoid relying on global state; each script should be runnable independently when invoked.\n"
-        "- Add defensive checks (e.g., missing files, empty DataFrames) with clear error messages.\n"
-        "- Pin or bound dependency versions to the APIs you use (e.g., pandas>=2.0,<3, scikit-learn>=1.3,<2).\n"
-        "- Ensure the requirements include every imported package (including transitive direct imports like numpy, joblib).\n"
-        "- Avoid deprecated APIs unless the version constraints explicitly allow them.\n"
-        "- Prefer stable, commonly available versions and avoid pre-release or nightly builds.\n"
-        "- If you rely on a new API, mention it in the code comments and ensure the requirement lower bound matches it.\n"
-        "- Ensure all required dependencies are imported in the scripts.\n"
-        "- Do not include Markdown fences.\n\n"
+        f"{constraint_text}\n\n"
         "Chat decisions (JSON):\n"
         f"{decision_payload}\n\n"
         "Data profile (JSON):\n"
