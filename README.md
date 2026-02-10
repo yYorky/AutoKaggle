@@ -7,6 +7,9 @@ AutoKaggle is a CLI-first tool that automates Kaggle competition workflows with 
 - **Why a CLI?** Kaggle workflows are naturally scriptable (download → train → submit). A CLI keeps runs reproducible, works well in CI or remote machines, and makes it easy to capture artifacts and logs without a UI dependency.
 - **Why let an LLM evaluate data and propose steps?** Kaggle competitions vary widely. The LLM reads the competition rules, evaluation metric, and data profile so it can suggest model family, features, constraints, and hyperparameters that are more tailored than a one-size-fits-all template.
 - **Why self-healing with retry steps?** Generated code can fail on edge cases (unexpected schemas, missing columns). AutoKaggle retries code generation with the failure context so the LLM can fix the specific error, improving reliability without manual intervention.
+- **Why split run orchestration into helper functions?** The run flow now follows explicit stages (`download_data` → `build_decision` → `generate_code` → `execute_and_retry`) to reduce cognitive load and make each stage easier to test in isolation.
+- **Why template prompt constraints as constants?** Centralizing codegen constraints avoids subtle drift when editing prompt policies and makes future prompt updates safer and more consistent.
+- **Why bounded tail reads for logs?** Log tailing now reads files incrementally and keeps only the last N lines in memory, which scales better for long-running jobs with large logs.
 
 ## Quickstart (clone → run → inspect)
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
+from collections import deque
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -17,7 +17,7 @@ from autokaggle.config import get_bool_setting, get_int_setting, load_config, se
 from autokaggle.data_profiler import profile_competition_data, write_profile
 from autokaggle.executor import PipelineExecutionError, run_pipeline
 from autokaggle.kaggle_client import KaggleClient
-from autokaggle.pipeline_generator import CodegenFailureContext, generate_pipeline
+from autokaggle.pipeline_generator import CodegenFailureContext, PipelineAssets, generate_pipeline
 from autokaggle.run_store import RunStore, default_run_root
 
 
@@ -27,53 +27,118 @@ def _handle_run(args: argparse.Namespace) -> int:
     run_root.mkdir(parents=True, exist_ok=True)
     store = RunStore(run_root)
     run_path = store.create_run(args.competition_url)
+
     if not get_bool_setting("AUTOKAGGLE_SKIP_DOWNLOAD", "skip_download", config=config):
-        client = KaggleClient()
-        client.download_competition_data(args.competition_url, run_path / "input")
-        client.ensure_sample_submission(args.competition_url, run_path / "input")
-        competition_metadata = client.fetch_competition_metadata(args.competition_url)
-        (run_path / "input" / "competition.json").write_text(json.dumps(competition_metadata, indent=2))
-        store.update_status(run_path.name, "data_downloaded")
-        profile = profile_competition_data(run_path / "input")
-        write_profile(profile, run_path / "input" / "data_profile.json")
-        store.update_status(run_path.name, "profiled")
-        if not get_bool_setting("AUTOKAGGLE_SKIP_CHAT", "skip_chat", config=config):
-            competition_page_text = fetch_competition_page_text(args.competition_url)
-            decision = run_chat_strategy(
-                run_path,
-                args.competition_url,
-                profile,
-                competition=competition_metadata,
-                competition_page_text=competition_page_text,
-            )
-            store.update_status(run_path.name, "chat_completed")
-        else:
-            decision = default_chat_decision(competition_metadata.get("evaluation_metric"))
-            write_chat_decisions(run_path, decision)
-        try:
-            assets = generate_pipeline(run_path, profile, decision)
-            store.update_status(run_path.name, "code_generated")
-        except Exception as exc:
-            store.update_status(run_path.name, "codegen_failed")
-            store.append_log(run_path.name, f"Code generation failed: {exc}")
-            raise
-        if not get_bool_setting("AUTOKAGGLE_SKIP_EXECUTION", "skip_execution", config=config):
-            try:
-                run_pipeline(run_path, assets.requirements_path)
-                store.update_status(run_path.name, "executed")
-            except PipelineExecutionError as exc:
-                store.update_status(run_path.name, "execution_failed")
-                _handle_failed_execution(
-                    store,
-                    args.competition_url,
-                    run_path,
-                    profile,
-                    decision,
-                    exc,
-                    config,
-                )
+        profile, competition_metadata = _download_data(args.competition_url, run_path, store)
+        decision = _build_decision(
+            run_path,
+            args.competition_url,
+            profile,
+            competition_metadata,
+            config,
+            store,
+        )
+        assets = _generate_code(run_path, profile, decision, store)
+        _execute_and_retry(
+            store,
+            args.competition_url,
+            run_path,
+            profile,
+            decision,
+            assets,
+            config,
+        )
+
     print(f"Run created: {run_path}")
     return 0
+
+
+def _download_data(
+    competition_url: str,
+    run_path: Path,
+    store: RunStore,
+) -> tuple[dict[str, object], dict[str, object]]:
+    client = KaggleClient()
+    input_dir = run_path / "input"
+    client.download_competition_data(competition_url, input_dir)
+    client.ensure_sample_submission(competition_url, input_dir)
+    competition_metadata = client.fetch_competition_metadata(competition_url)
+    (input_dir / "competition.json").write_text(json.dumps(competition_metadata, indent=2))
+    store.update_status(run_path.name, "data_downloaded")
+
+    profile = profile_competition_data(input_dir)
+    write_profile(profile, input_dir / "data_profile.json")
+    store.update_status(run_path.name, "profiled")
+    return profile, competition_metadata
+
+
+def _build_decision(
+    run_path: Path,
+    competition_url: str,
+    profile: dict[str, object],
+    competition_metadata: dict[str, object],
+    config: dict[str, object],
+    store: RunStore,
+) -> ChatDecision:
+    if not get_bool_setting("AUTOKAGGLE_SKIP_CHAT", "skip_chat", config=config):
+        competition_page_text = fetch_competition_page_text(competition_url)
+        decision = run_chat_strategy(
+            run_path,
+            competition_url,
+            profile,
+            competition=competition_metadata,
+            competition_page_text=competition_page_text,
+        )
+        store.update_status(run_path.name, "chat_completed")
+        return decision
+
+    decision = default_chat_decision(competition_metadata.get("evaluation_metric"))
+    write_chat_decisions(run_path, decision)
+    return decision
+
+
+def _generate_code(
+    run_path: Path,
+    profile: dict[str, object],
+    decision: ChatDecision,
+    store: RunStore,
+) -> PipelineAssets:
+    try:
+        assets = generate_pipeline(run_path, profile, decision)
+        store.update_status(run_path.name, "code_generated")
+        return assets
+    except Exception as exc:
+        store.update_status(run_path.name, "codegen_failed")
+        store.append_log(run_path.name, f"Code generation failed: {exc}")
+        raise
+
+
+def _execute_and_retry(
+    store: RunStore,
+    competition_url: str,
+    run_path: Path,
+    profile: dict[str, object],
+    decision: ChatDecision,
+    assets: PipelineAssets,
+    config: dict[str, object],
+) -> None:
+    if get_bool_setting("AUTOKAGGLE_SKIP_EXECUTION", "skip_execution", config=config):
+        return
+
+    try:
+        run_pipeline(run_path, assets.requirements_path)
+        store.update_status(run_path.name, "executed")
+    except PipelineExecutionError as exc:
+        store.update_status(run_path.name, "execution_failed")
+        _handle_failed_execution(
+            store,
+            competition_url,
+            run_path,
+            profile,
+            decision,
+            exc,
+            config,
+        )
 
 
 def _handle_status(args: argparse.Namespace) -> int:
@@ -116,10 +181,13 @@ def _handle_logs(args: argparse.Namespace) -> int:
 
 
 def _tail_file(path: Path, lines: int = 50) -> str:
-    content = path.read_text().splitlines()
-    if len(content) <= lines:
-        return "\n".join(content)
-    return "\n".join(content[-lines:])
+    if lines <= 0:
+        return ""
+    tail_lines: deque[str] = deque(maxlen=lines)
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            tail_lines.append(line.rstrip("\n"))
+    return "\n".join(tail_lines)
 
 
 def _handle_failed_execution(
@@ -129,9 +197,9 @@ def _handle_failed_execution(
     profile: dict[str, object],
     decision: ChatDecision,
     error: PipelineExecutionError,
-    config: dict[str, object],
+    config: dict[str, object] | None = None,
 ) -> None:
-    max_retries = _get_max_codegen_retries(config)
+    max_retries = _get_max_codegen_retries(config or {})
     log_path = failed_run_path / "logs" / "run.log"
     log_excerpt = _tail_file(log_path, lines=200) if log_path.exists() else ""
     failure_context = CodegenFailureContext(
@@ -139,7 +207,7 @@ def _handle_failed_execution(
         run_log=log_excerpt,
     )
     previous_attempts: list[dict[str, str]] = []
-    for attempt in range(1, max_retries + 1):
+    for _ in range(1, max_retries + 1):
         retry_run_path = store.create_run(competition_url)
         _copy_run_inputs(failed_run_path, retry_run_path)
         write_profile(profile, retry_run_path / "input" / "data_profile.json")

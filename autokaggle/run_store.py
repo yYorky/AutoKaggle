@@ -99,7 +99,8 @@ class RunStore:
 
     def _append_log(self, path: Path, message: str) -> None:
         timestamp = datetime.now(timezone.utc).isoformat()
-        path.write_text(path.read_text() + f"[{timestamp}] {message}\n")
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"[{timestamp}] {message}\n")
 
     @staticmethod
     def _generate_run_id() -> str:
