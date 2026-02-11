@@ -46,6 +46,11 @@ AutoKaggle is a CLI-first tool that automates Kaggle competition workflows with 
    export AUTOKAGGLE_MODEL=gemini-3-flash-preview
    ```
 
+   Notes:
+   - `GOOGLE_API_KEY` enables LLM-backed chat strategy and LLM code generation.
+   - `AUTOKAGGLE_MODEL` only selects the model name used for those LLM calls.
+   - If `GOOGLE_API_KEY` is not set, AutoKaggle falls back to local template-based code generation.
+
 5. **Run AutoKaggle**
    ```bash
    python -m autokaggle run https://www.kaggle.com/competitions/{competition}
@@ -85,7 +90,7 @@ flowchart TD
 2. **Data profiling**: AutoKaggle scans CSVs in the downloaded dataset and produces a `data_profile.json`.
 3. **Chat-guided strategy**: an LLM (default: Gemini) reviews the competition and data profile to propose a baseline strategy and hyperparameters (or you can skip this step).
 4. **Pipeline generation**: AutoKaggle generates `data_loading.py`, `preprocess.py`, `train.py`, and `predict.py` plus an `env/requirements.txt` (LLM-generated if a key is available, otherwise templated locally).
-5. **Local execution (optional)**: the generated scripts are executed in a per-run virtualenv to produce `metrics.json`, `model.joblib`, and `submission.csv`.
+5. **Local execution (optional)**: the generated scripts are executed in a per-run virtualenv to produce `model_lightgbm.joblib`, `model_xgboost.joblib`, `model_catboost.joblib`, `model_meta.json`, and `submission.csv`.
 6. **Self-healing retries**: if execution fails, AutoKaggle regenerates code with the error context for a configurable number of retries.
 
 ## Repository structure (run artifacts)
@@ -108,8 +113,10 @@ runs/
       requirements.txt
       venv/
     output/
-      model.joblib
-      metrics.json
+      model_lightgbm.joblib
+      model_xgboost.joblib
+      model_catboost.joblib
+      model_meta.json
       submission.csv
     logs/
       run.log
@@ -138,7 +145,7 @@ max_codegen_retries: 3
 You can still configure these via environment variables instead:
 
 - `AUTOKAGGLE_MODEL`: LLM model name (default is configured in code).
-- `AUTOKAGGLE_SKIP_DOWNLOAD=1`: skip downloading competition data (use existing `runs/{run_id}/input` contents).
+- `AUTOKAGGLE_SKIP_DOWNLOAD=1`: intentionally runs in "create-only" mode (creates a run folder and metadata, then exits without download/profile/chat/codegen/execution).
 - `AUTOKAGGLE_SKIP_CHAT=1`: skip the LLM strategy step and use a default baseline.
 - `AUTOKAGGLE_SKIP_EXECUTION=1`: generate code without executing it.
 - `AUTOKAGGLE_MAX_CODEGEN_RETRIES=3`: retries for self-healing code generation.
