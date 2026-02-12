@@ -111,6 +111,5 @@ def _venv_bin(venv_dir: Path, executable: str) -> Path:
 def _log(log_path: Path, message: str) -> None:
     timestamp = datetime.now(timezone.utc).isoformat()
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    if not log_path.exists():
-        log_path.write_text("")
-    log_path.write_text(log_path.read_text() + f"[{timestamp}] {message}\n")
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"[{timestamp}] {message}\n")
