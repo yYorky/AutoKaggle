@@ -1,3 +1,5 @@
+![](https://raw.githubusercontent.com/yYorky/AutoKaggle/refs/heads/main/assets/autokaggle.png)
+
 # AutoKaggle
 
 AutoKaggle is a CLI-first tool that automates Kaggle competition workflows with minimal user input. You provide a competition URL, and AutoKaggle will download data, profile the dataset, ask an LLM for strategy guidance, generate a runnable baseline pipeline, and (optionally) execute it locally to produce a `submission.csv`.
