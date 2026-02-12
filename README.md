@@ -132,6 +132,7 @@ settings from an optional `config.yaml`. Environment variables always take prece
 ### Secrets (`.env`)
 
 - `KAGGLE_API_TOKEN`: Kaggle API token (required to download competition data).
+- `KAGGLE_USERNAME`: Kaggle username (required to download competition data).
 - `GOOGLE_API_KEY`: Google GenAI API key (required for chat + LLM codegen).
 
 ### Runtime settings (`config.yaml`)
