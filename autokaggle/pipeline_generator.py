@@ -31,7 +31,7 @@ CODEGEN_CONSTRAINTS = (
     "Respect competition rules/metric hints in competition metadata.",
     "data_loading.py: define load_training_data, load_test_data, load_sample_submission helpers.",
     "data_loading.py: return pandas DataFrames, preserve column names, and avoid side effects.",
-    "preprocess.py: define load_profile() that reads data_profile.json.",
+    "preprocess.py: define load_profile() that reads from 'input'/ data_profile.json.",
     "preprocess.py: define build_preprocessor(profile) returning a ColumnTransformer for numeric/categorical features.",
     "preprocess.py: handle missing columns by intersecting requested columns with available columns and log warnings.",
     "train.py: define train() that trains CatBoost, LightGBM, XGBoost and writes model_*.joblib in output/.",
