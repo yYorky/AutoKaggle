@@ -1,4 +1,6 @@
 autokaggle_model: gemini-3-flash-preview
+# autokaggle_model: gemini-2.5-flash
+# autokaggle_model: gemini-2.5-flash-lite
 skip_download: false
 skip_chat: false
 skip_execution: false
